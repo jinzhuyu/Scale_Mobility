@@ -10,6 +10,8 @@ import os
 import pickle
 from collections import defaultdict
 
+os.chdir("./preprocess")
+
 def stop_points(pathraw,path_output):
     r1 = 30;r2 = 30;min_staying_time = 600;max_time_between = 86400;
     files = os.listdir(pathraw)
@@ -49,3 +51,5 @@ if __name__ == '__main__':
     path_individual= output_str+'_individual/individual_raw/'
     path_individaul_stopoints= output_str+'_individual/individual_stopoints/'
     stop_points(path_individual, path_individaul_stopoints)
+    
+

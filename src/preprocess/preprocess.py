@@ -9,10 +9,10 @@ from math import radians
 import os
 import pickle
 from collections import defaultdict
-os.chdir("/Users/lucinezhong/Documents/LuZHONGResearch/20210328Scale_Mobility/")
+# os.chdir("/Users/lucinezhong/Documents/LuZHONGResearch/20210328Scale_Mobility/")
 
 def pre_process(path,output_path,output_list):
-    files = os.listdir(path)  # 得到文件夹下的所有文件名称
+    files = os.listdir(path)  # get the list of all files in the specified directory
     for file in files:
         if file in output_list:
             df = pd.read_csv(path + "/" + file, compression='gzip',error_bad_lines=False)
@@ -47,7 +47,7 @@ def pre_process(path,output_path,output_list):
 def merge(path,output_path):
     id_date=defaultdict()
     list_id = []
-    files = os.listdir(path)  # 得到文件夹下的所有文件名称
+    files = os.listdir(path)  # get the list of all files in the specified directory
     count=0
     for file in files[0:1]:
         print(file)
@@ -70,7 +70,7 @@ def individual_data_process(datapath_1,datapath_2,output_path):
     r1=30; r2=30; min_staying_time=600; max_time_between=86400;
     r1=30; r2=30; min_staying_time=600; max_time_between=86400;
 
-    files = os.listdir(datapath_1)  # 得到文件夹下的所有文件名称
+    files = os.listdir(datapath_1)  # get the list of all files in the specified directory
     names = locals()
     for file in files:
         names[file] = pd.read_csv(datapath_1 + "/" + file, chunksize=1000)
