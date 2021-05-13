@@ -1,9 +1,12 @@
 import numpy as np
 from sklearn.neighbors import BallTree
 from scipy.spatial.qhull import QhullError
-from infomap import Infomap
-from scipy.spatial import ConvexHull
 from tqdm import tqdm
+from scipy.spatial import ConvexHull
+
+from infomap import Infomap
+
+
 
 def pass_func(input, **kwargs):
     return input

@@ -22,8 +22,11 @@ sc = SparkContext.getOrCreate(conf=conf)
 #initialize SQLContext from spark cluster 
 sqlContext = SQLContext(sc)
 
+
+os.chdir("C:/Users/Administrator/OneDrive/GitHub/Scale_Mobility/src")
+
 #load raw data
-path = ("C:/Users/Administrator/OneDrive/GitHub/Scale_Mobility/data/Albany/2020031600.csv.gz")
+path = ("../data/Albany/2020031600.csv.gz")
 # path = "../data/Albany/2020031600.csv.gz"
 data_raw = sqlContext.read.csv(path, header=False)
 # name the columns

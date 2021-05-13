@@ -1,4 +1,8 @@
-import infostop
+import infostop1
+
+# from infostop1.infostop11 import models #import Infostop
+# model = infostop11.Infostop()
+
 import datetime
 import pandas as pd
 import numpy as np
@@ -10,7 +14,6 @@ import os
 import pickle
 from collections import defaultdict
 
-os.chdir("./preprocess")
 
 def stop_points(pathraw,path_output):
     r1 = 30;r2 = 30;min_staying_time = 600;max_time_between = 86400;
@@ -23,7 +26,7 @@ def stop_points(pathraw,path_output):
                                     r2 =r2,
                                     label_singleton=False,
                                     min_staying_time = min_staying_time,
-                                    max_time_between =max_time_between,#86400
+                                    max_time_between = max_time_between,#86400
                                     min_size = 2)
             finding_stops=True
             #labels = model_infostop.fit_predict(df_temp[['latitude', 'longitude', 'time']].values)
@@ -45,11 +48,15 @@ def stop_points(pathraw,path_output):
                     count+=1
                 df_ouput.to_csv(path_output+individual+'.csv',index = False)
 
-
-if __name__ == '__main__':
+os.chdir("./preprocess")
+def main():
     output_str = 'Jan'
     path_individual= output_str+'_individual/individual_raw/'
     path_individaul_stopoints= output_str+'_individual/individual_stopoints/'
     stop_points(path_individual, path_individaul_stopoints)
-    
 
+
+if __name__ == '__main__':
+    main()
+else:
+    print('The main() function did not execute')
