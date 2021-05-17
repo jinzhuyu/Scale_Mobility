@@ -25,6 +25,12 @@ spark = SparkSession.builder.appName('data_preprocess').getOrCreate()
 sqlContext = SQLContext(spark)
 
 
+''' TODO: Loading the data seems to take most of the time.
+          Check if using dask to load csv is faster than using pyspark
+          ref.: https://medium.com/analytics-vidhya/optimized-ways-to-read-large-csvs-in-python-ab2b36a7914e
+'''
+
+
 def load_data(path_data='../data', location='Albany', date='20200316'):
     '''import the raw data, rename columns, and select the columns for time and coordinates.
     
