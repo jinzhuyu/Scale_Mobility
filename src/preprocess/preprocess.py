@@ -12,11 +12,11 @@ from collections import defaultdict
 
 # class Preprocess:
        
-#     def __init__(self, verbose=False):
+#     def __init__(self, path=None, verbose=False):
+#         self.path = path
 #         self.verbose = verbose
         
-#         self._assert_foo()
-        
+#         self._assert_foo()       
 #         self.foo()
 
 #     def foo(self):
@@ -24,6 +24,7 @@ from collections import defaultdict
    
 #     def _assert_foo(self):
 #         assert not self.verbose, "'verbose' is true"
+#         asset not self.path==None, "Please input the path for data folder"
         
 #     def remove_error_entries(self, path):
 #         if self.verbose == True:
