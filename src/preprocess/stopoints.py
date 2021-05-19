@@ -11,9 +11,9 @@ import pickle
 from collections import defaultdict
 
 def stop_points(pathraw,path_output):
-    r1 = 30;r2 = 30;min_staying_time = 600;max_time_between = 86400;
-    files = os.listdir(pathraw)
-    for file in files[1:len(files)]:
+    r1 = 30;r2 = 30;min_staying_time = 600;max_time_between = 86400; ###parameters
+    files = os.listdir(pathraw) ###import all individuals' trajecotry record
+    for file in files[1:len(files)]: ###for each indivdiual
         df_temp=pd.read_csv(pathraw+file)
         individual=file[0:-4]
         if np.any(np.isnan(np.vstack(df_temp[['latitude', 'longitude', 'time']].values)))==False:
@@ -32,14 +32,15 @@ def stop_points(pathraw,path_output):
                 finding_stops=False
             if finding_stops==True and np.max(labels)>1:
                 count = 0
-                df_ouput = pd.DataFrame(columns=['individual', 'label', 'start', 'end', 'latitude', 'longitude'])
-                position_dict=dict(zip(df_temp['time'].values,df_temp[['latitude','longitude']].values))
-                trajectory = infostop.postprocess.compute_intervals(labels,df_temp['time'].values)
+                
+                df_ouput = pd.DataFrame(columns=['individual', 'label', 'start', 'end', 'latitude', 'longitude'])###output individual's stopoints
+                position_dict=dict(zip(df_temp['time'].values,df_temp[['latitude','longitude']].values)) ###
+                trajectory = infostop.postprocess.compute_intervals(labels,df_temp['time'].values) ###geting the stoppoints at ech time
                 for i in range(len(trajectory)):
                     time_here=trajectory[i][1]
-                    lat_temp=position_dict[time_here][0]
-                    lon_temp=position_dict[time_here][1]
-                    df_ouput.loc[count]=[individual]+trajectory[i]+[position_dict[time_here][0],position_dict[time_here][1]]
+                    lat_temp=position_dict[time_here][0] ###getting the lat
+                    lon_temp=position_dict[time_here][1]###getting the lon
+                    df_ouput.loc[count]=[individual]+trajectory[i]+[position_dict[time_here][0],position_dict[time_here][1]] ####output
                     count+=1
                 df_ouput.to_csv(path_output+individual+'.csv',index = False)
 

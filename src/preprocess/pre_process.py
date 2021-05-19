@@ -45,55 +45,53 @@ def pre_process(path,output_path,output_list):
             df.to_csv(output_path+file[0:10]+'.csv')
 
 def merge(path,output_path):
-    id_date=defaultdict()
+    id_date=defaultdict() ###dictonary with two dimensions, first dimenson for user_id, second dimenson for .csv file name
     list_id = []
     files = os.listdir(path)  # 得到文件夹下的所有文件名称
     count=0
-    for file in files[0:1]:
+    for file in files[0:1]: ##import all the .csv file name (file name is named by date)
         print(file)
         df = pd.read_csv(path + "/" + file)
-        for index, row in df.iterrows():
+        for index, row in df.iterrows(): ###read each .csv
             if row['id_str'] not in id_date.keys():
-                id_date[row['id_str']] = dict()
+                id_date[row['id_str']] = dict() ###create the second dim for each id
             if file not in id_date[row['id_str']].keys():
-                id_date[row['id_str']][file] = []
-            id_date[row['id_str']][file].append(index)
+                id_date[row['id_str']][file] = [] ###create the index array for each id at each .csv file
+            id_date[row['id_str']][file].append(index) ###obtain each id's index at each .csv file
         list_id = list_id + list(pd.unique(df['id_str']))
         count+=1
     df_all_id = pd.DataFrame(columns=['id_str'])
     df_all_id['id_str'] = np.unique(list_id)
     df_all_id.to_csv(output_path + output_str + '_Albany_all_ids.csv')
-    with open(output_path + output_str + '_Albany_all_ids_dict.pickle', 'wb') as handle:
+    with open(output_path + output_str + '_Albany_all_ids_dict.pickle', 'wb') as handle: ####save the dictonary of id_date
         pickle.dump(id_date, handle)
 
 def individual_data_process(datapath_1,datapath_2,output_path):
-    r1=30; r2=30; min_staying_time=600; max_time_between=86400;
-    r1=30; r2=30; min_staying_time=600; max_time_between=86400;
 
     files = os.listdir(datapath_1)  # 得到文件夹下的所有文件名称
     names = locals()
-    for file in files:
+    for file in files:####import all the .csv file name (file name is named by date)
         names[file] = pd.read_csv(datapath_1 + "/" + file, chunksize=1000)
     print("done with reading all trajectory")
-    with open(datapath_2+ output_str + '_Albany_all_ids_dict.pickle', 'rb') as handle:
+    with open(datapath_2+ output_str + '_Albany_all_ids_dict.pickle', 'rb') as handle: ####read the dictonary of id_date
         individual_date = pickle.load(handle)
     unique_id_list = list(individual_date.keys())
     print("done with reading all individuals")
 
     countx=0
     labels_list=[]
-    for individual,count_id in zip(unique_id_list,[i for i in range(len(unique_id_list))]):
-        if len(list(individual_date[individual].keys()))>30 and len(individual)>10: ###AT LEAST ONE MONTH
+    for individual,count_id in zip(unique_id_list,[i for i in range(len(unique_id_list))]): ###iterate each indivdiual got all its record
+        if len(list(individual_date[individual].keys()))>30 and len(individual)>10: ###the chosed individual has records more than a month
             print(individual, count_id)
             df_temp = pd.DataFrame(columns=['latitude','longitude','time'])
             for file,value in individual_date[individual].items():
-                value_temp = value
+                value_temp = value ###get current individual's index at this file
                 try:
-                    df_temp = pd.concat([df_temp, names[file].loc[value_temp, ['latitude', 'longitude', 'time']]])
+                    df_temp = pd.concat([df_temp, names[file].loc[value_temp, ['latitude', 'longitude', 'time']]]) ###combine the records
                 except:
                     print('wrong results')
             df_temp = df_temp.sort_values(by='time').reset_index(drop=True)
-            df_temp.to_csv(output_path + output_str + '/individual_raw/' + individual + '.csv')
+            df_temp.to_csv(output_path + output_str + '/individual_raw/' + individual + '.csv') ###output the individual records
 
 
 if __name__ == '__main__':
