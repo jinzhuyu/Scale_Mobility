@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon May 10 21:19:17 2021
-
 @author: Jinzhu Yu
 """
+
 import pandas as pd
 import dask
 import dask.dataframe as dd
@@ -32,52 +31,29 @@ sqlContext = SQLContext(spark)
           
           dask_df.values.compute() is equivalent to pandas_df.values(), both convert df to a numpy array
               to be used in the infostop functions
+
 '''
 
 
-def load_data(path_data='../data', location='Albany', date='20200316'):
+def load_data(path_data='../data', location='Albany', date='20200316', package_for_df='spark'):
     '''import the raw data, rename columns, and select the columns for time and coordinates.
     
     parameters
         path_data - relative path of the data relative to this script in 'src', e.g., path_data = '../data'
+        package - the package used for loading the csv.gz file, including spark, pandas, dask
     '''
     
     #load raw data
     os.chdir(path_data)
     path_datafile = os.path.join(os.getcwd(), '{}\\{}00.csv.gz'.format(location, date))
     # path_datafile = os.path.join(os.getcwd(), 'Albany\\*.csv.gz') #load all csv.gz files at once
-    df = sqlContext.read.csv(path_datafile, header=False)
-
-    return df    
-
-
-def load_data_pandas(path_data='../data', location='Albany', date='20200316'):
-    '''import the raw data, rename columns, and select the columns for time and coordinates.
     
-    parameters
-        path_data - relative path of the data relative to this script in 'src', e.g., path_data = '../data'
-    '''
-    
-    #load raw data
-    os.chdir(path_data)
-    path_datafile = os.path.join(os.getcwd(), '{}\\{}00.csv.gz'.format(location, date))
-    # path_datafile = os.path.join(os.getcwd(), 'Albany\\*.csv.gz') #load all csv.gz files at once
-    df = pd.read_csv(path_datafile, compression='gzip', error_bad_lines=False)
-
-    return df 
-
-def load_data_dask(path_data='../data', location='Albany', date='20200316'):
-    '''import the raw data, rename columns, and select the columns for time and coordinates.
-    
-    parameters
-        path_data - relative path of the data relative to this script in 'src', e.g., path_data = '../data'
-    '''
-    
-    #load raw data
-    os.chdir(path_data)
-    path_datafile = os.path.join(os.getcwd(), '{}\\{}00.csv.gz'.format(location, date))
-    # path_datafile = os.path.join(os.getcwd(), 'Albany\\*.csv.gz') #load all csv.gz files at once
-    df = dd.read_csv(path_datafile, compression='gzip', error_bad_lines=False)
+    # select the package used to load data, spark, pd (pandas), or dd (dask)
+    if package_for_df == 'spark':
+        df = sqlContext.read.csv(path_datafile, header=False)
+    else:
+        load_df = "df = {}.read_csv(path_datafile, compression='gzip', error_bad_lines=False)".format(package_for_df)
+        exec(load_df)
 
     return df 
 
@@ -163,8 +139,9 @@ def main(is_save=False):
     location = 'Albany'
     date = '20200316'
 
-    # load data, change column data type, and select columns for time and coordinates    
-    df = load_data(path_data, location)
+    # load data, change column data type, and select columns for time and coordinates
+    package_for_df = 'spark'    
+    df = load_data(path_data, location, date, package_for_df)
 
     # df = rename_and_select_col(df)
     # df = remove_error_coord(df)
@@ -191,13 +168,20 @@ def get_exe_time():
 
 
 if __name__ == "__main__":
-    main()
-    get_exe_time() 
+     
+    import cProfile, pstats
+    profiler = cProfile.Profile()
+    profiler.enable()
+
+    # main()
+    get_exe_time()
+
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('ncalls')
+    stats.print_stats()
+
+ 
     
     # pyspark: 5963598 entires; 5.09 at the first time but much faster from the second time onward
     # pandas: 5963597; About 15 seconds when using pandas to load the data
     # dask: About 0.33 seconds
-    
-    
-    
-    

@@ -15,7 +15,22 @@ import pickle
 from collections import defaultdict
 
 
-def stop_points(pathraw,path_output):
+def infer_stop_points(pathraw,path_output):
+    '''
+    infer the stop point of each individual
+
+    Parameters
+    ----------
+    pathraw : TYPE
+        File name contains the ID of each individual.
+    path_output : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    '''
     r1 = 30;r2 = 30;min_staying_time = 600;max_time_between = 86400;
     files = os.listdir(pathraw)
     for file in files[1:len(files)]:
@@ -59,4 +74,4 @@ def main():
 if __name__ == '__main__':
     main()
 else:
-    print('The main() function did not execute')
+    print("The main() function in 'stopoint' did not execute")
