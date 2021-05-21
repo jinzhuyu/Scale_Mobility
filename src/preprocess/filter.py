@@ -14,27 +14,15 @@ from pathlib import Path
 import findspark
 findspark.init('C:/Spark/spark-3.0.0-bin-hadoop2.7')
 # from pyspark import SparkConf, SparkContext
-#import all the libraries of pyspark.sql
 from pyspark.sql import*
 from pyspark.sql.types import*
 from pyspark.sql.functions import col, length
 # #set an application name 
-# conf = SparkConf().setMaster("local").setAppName("data_preprocess")
 # #start spark cluster; if already started then get it else create it 
-# sc = SparkContext.getOrCreate(conf=conf)
 sc = SparkSession.builder.appName('data_preprocess').master("local[*]").getOrCreate()
 #initialize SQLContext from spark cluster 
 sqlContext = SQLContext(sparkContext=sc.sparkContext, sparkSession=sc)
 
-
-
-''' TODO:
-    Loading the data seems to take most of the time. Could use dask to load the data
-          
-    dask_df.values.compute() == pandas_df.values(), both convert df to a numpy array
-    to be used in the infostop functions
-
-'''
 
 
 
@@ -63,7 +51,7 @@ def load_data(path_data='../data', location='Albany', date='20200207', package_f
 
 def rename_col(df, package_for_df='spark'):
     '''rename the columns. The columns in the resultant df from loading data with spark are all of string type.
-       note: 'time' and 'time_original' are in timestamp format (integer value)
+       note: 'time' and 'time_original' are in unix timestamp format (integer value)
        ## change column type
            # # check out data type of each column
            # df.printSchema()  # all string, column names are '_c0' to '_c9'
@@ -97,10 +85,9 @@ def rename_col(df, package_for_df='spark'):
 
 def select_col(df, package_for_df='spark'):
     '''select columns: id_str, time, latidude, and longitude, accuracy
-       'accuracy' column is not needed now, but is kept for possible future use
     '''
     
-    col_select = ['time', 'latitude', 'longitude', 'id_str', 'accuracy']
+    col_select = ['time', 'latitude', 'longitude', 'id_str']
     
     if package_for_df == 'spark':
         df_select = df.select(*col_select)
@@ -135,7 +122,7 @@ def remove_error_entry(df, package_for_df='spark'):
     return df
     
 
-def save_df(df, location='Albany', date='20200316'):
+def save_df_traj(df, location='Albany', date='20200316'):
     '''save the processed df to the folder for the current location
          within 'data_processed' folder, which is on the same level of the 'data' folder'
     '''
@@ -160,7 +147,31 @@ def save_df(df, location='Albany', date='20200316'):
     return None
 
 
-def get_data_for_indiv(df, package_for_df='spark', is_save=False):
+def save_df_indiv(df, id_indiv):
+    '''save the df to the folder for the current individual
+         within 'data_of_indiv' folder, which is on the same level of the 'data' folder'
+         
+    Parameters
+    ----------
+    df : spark df containing the trajectory data for all individuals for at least 30 days
+         
+    '''
+
+    # create a new folder if it does not exist 
+    path_parent = str(Path(os.getcwd()).parent)  # get parent path of src
+    path_data_of_indiv =  '../data_of_indiv'
+    
+    if not os.path.isdir(path_data_of_indiv):
+        path_data_of_indiv_abs = path_parent + path_data_of_indiv.replace('.', '')
+        os.makedirs(path_data_of_indiv_abs)
+        
+    csv_path_and_name = path_data_of_indiv + '/' + '.csv'    
+    df.write.csv(csv_path_and_name)
+    
+    return None
+
+
+def retrieve_data_of_indiv(df, days_need_min=1, package_for_df='spark', is_save=False):
     '''
     Get the coordinates and time for each individual from the df that include trajectory data for some time, e.g. 2 months.
 
@@ -170,30 +181,49 @@ def get_data_for_indiv(df, package_for_df='spark', is_save=False):
 
     Returns
     -------
-    The df for each individual that has more than a month's data
+    Save the df for each individual that has more than 30 days' data; columns include: time, latitude, longitude
+    is_indiv_save: a list of binary value indicating where the i-th individual data is saved. 
 
     '''
     
-    # TODO: finding unique ids is very slow. Need to improve the speed.
+    # TODO: finding unique IDs is very slow. Need to improve the speed.
     # id_unique = [i for i in df.select('id_str').distinct().collect()]
-    if package_for_df == 'spark':
-        id_uniq = [x.id_str for x in df.select('id_str').distinct().collect()]
-    else:
-        id_uniq = df['id_str'].unique().compute()
+    
 
-    days_need_min = 30
-    for id in id_uniq:
-        df_for_indiv = df.filter(df.id_str == id)  #.collect()
+    # print('Using spark')
+    id_uniq = [x.id_str for x in df.select('id_str').distinct().collect()]
+    # else:
+    #     print('Using dask')
+    #     id_uniq = df['id_str'].unique().compute()
+
+    def loop_over_indiv(id_indiv, i):
         
-        # only keep the df for individual with more than 30 days' data
-        time_datetime = datetime.fromtimestamp(df_for_indiv.select['time'].collect())
+        if (i >= 1 & i % 100==0):
+            print('\n ===== retrieving the data for {}-th individual among {} ====='. format(i, len(id_uniq)))
+     
+        df_of_indiv = df.filter(df.id_str == id_indiv)  #.collect()
         
-        if ( (time_datetime.max() - time_datetime.min()) > days_need_min ) & is_save:
-            csv_path_and_name = path_location + '/' + id + '.csv'    
-            df_for_indiv.write.csv(csv_path_and_name)
+        # only keep the df for individual with data for every single day in at least 30 days
+        # retrieve time data and convert to datetime
+        time_timestamp  = [row.time for row in df_of_indiv.collect()]
+        # convert unix timestamp to string time
+        time_str= list( map(lambda num: datetime.fromtimestamp(num).strftime('%Y-%m-%d'),
+                            time_timestamp) )
+        
+        date_uniq = list(set(time_str))  # unique dates
+        if (len(date_uniq) >= days_need_min) & is_save:
+            save_df_indiv(df=df_of_indiv, id_indiv = id_indiv)
+            
+            return 1
+        
+        else:
+            
+            return 0
+        
+
+    is_indiv_save = list( map( loop_over_indiv, id_uniq[10], list( range(len(id_uniq[:10])) ) ) )
     
-    
-    return None
+    return is_indiv_save
 
     
 def main(is_save=False, package_for_df='spark'):
@@ -213,10 +243,14 @@ def main(is_save=False, package_for_df='spark'):
     df = rename_col(df)
     df = select_col(df)
     df = remove_error_entry(df)
-
-    # save data if needed    
+    
+    # save trajectory data if needed    
     if is_save:
-        save_df(df, location, date)
+        save_df_traj(df, location, date) 
+        
+    # retrieve the trajectory data of each individual
+    days_need_min = 30
+    retrieve_data_of_indiv(df, days_need_min, package_for_df)
         
     return None
 
@@ -226,28 +260,38 @@ def get_exe_time():
     import time
     
     start_time = time.time()
+    
     main()
+    
     end_time = time.time()
+    
     time_diff = end_time-start_time
     
-    print("--- Time for loading and selecting data: {} seconds ---".format( round(time_diff, 3) ) )
+    print( "\n ===== Time for loading and selecting data: {} seconds =====".format( round(time_diff,3) ) )
 
     return None
+
+
+def get_code_profile():
+    
+    import cProfile, pstats
+    
+    profiler = cProfile.Profile()
+    profiler.enable()
+
+    main()
+
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('ncalls')
+    
+    print("\n\n\n")
+    stats.print_stats()
 
 
 ###################
 if __name__ == "__main__":
      
-    import cProfile, pstats
-    profiler = cProfile.Profile()
-    profiler.enable()
-
-    # main()
-    get_exe_time()
-
-    profiler.disable()
-    stats = pstats.Stats(profiler).sort_stats('ncalls')
-    stats.print_stats()
+    main()
 
  
     
