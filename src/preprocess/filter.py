@@ -27,6 +27,11 @@ sqlContext = SQLContext(sparkContext=sc.sparkContext, sparkSession=sc)
 
 
 ###################
+# class TrajData:
+    
+# traj_data = TrajData()
+# traj_data.main()
+    
 def load_data(path_data='../data', location='Albany', date='20200207', package_for_df='spark'):
     '''import the raw data.
     
@@ -198,7 +203,7 @@ def retrieve_data_of_indiv(df, days_need_min=1, package_for_df='spark', is_save=
 
     def loop_over_indiv(id_indiv, i):
         
-        if (i >= 1 & i % 100==0):
+        if ( (i >= 1) & (i%100==0) ):
             print('\n ===== retrieving the data for {}-th individual among {} ====='. format(i, len(id_uniq)))
      
         df_of_indiv = df.filter(df.id_str == id_indiv)  #.collect()
@@ -221,11 +226,12 @@ def retrieve_data_of_indiv(df, days_need_min=1, package_for_df='spark', is_save=
             return 0
         
 
-    is_indiv_save = list( map( loop_over_indiv, id_uniq[10], list( range(len(id_uniq[:10])) ) ) )
+    is_indiv_save = list( map( loop_over_indiv, id_uniq[50], list( range(len(id_uniq[:50])) ) ) )
     
     return is_indiv_save
 
-    
+
+# def run_data_process()    
 def main(is_save=False, package_for_df='spark'):
     
     # set the absolute path when run within python IDE
