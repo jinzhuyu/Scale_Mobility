@@ -39,14 +39,14 @@ sqlContext = SQLContext(sparkContext=sc.sparkContext, sparkSession=sc)
 
 
 ###################
-def load_data(path_data='../data', location='Albany', date='20200316', package_for_df='spark'):
+def load_data(path_data='../data', location='Albany', date='20200207', package_for_df='spark'):
     '''import the raw data.
     
     parameters
         path_data - relative path of the data relative to this script in 'src', e.g., path_data = '../data'
         package - the package used for loading the csv.gz file, including spark and dd (dask)
     '''
-    
+        
     #load raw data
     os.chdir(path_data)
     # path_datafile = os.path.join(os.getcwd(), '{}\\{}00.csv.gz'.format(location, date))
@@ -56,13 +56,12 @@ def load_data(path_data='../data', location='Albany', date='20200316', package_f
     if package_for_df == 'spark':
         df = sqlContext.read.csv(path_datafile, header=False)
     else:
-        load_df = "df = {}.read_csv(path_datafile, compression='gzip', error_bad_lines=False)".format(package_for_df)
-        exec(load_df)
+        df = dd.read_csv(path_datafile, compression='gzip', error_bad_lines=False)
 
     return df 
 
 
-def rename_col(df):
+def rename_col(df, package_for_df='spark'):
     '''rename the columns. The columns in the resultant df from loading data with spark are all of string type.
        note: 'time' and 'time_original' are in timestamp format (integer value)
        ## change column type
@@ -75,30 +74,43 @@ def rename_col(df):
     # rename the columns
     col_names_old = df.columns
     col_names_new = ['time_original','id_str','device_type','latitude','longitude','accuracy','timezone','class','transform','time']
-    for i in range(len(col_names_old)):
-        df = df.withColumnRenamed(col_names_old[i], col_names_new[i])
+    if package_for_df == 'spark':
+        for i in range(len(col_names_old)):
+            df = df.withColumnRenamed(col_names_old[i], col_names_new[i])
+    else:
+        df = df.rename(columns=dict(zip(col_names_old, col_names_new)))
         
     # change column type
-    schema_new = [IntegerType(), StringType(), IntegerType(), FloatType(), FloatType(),
-                  FloatType(), IntegerType(), StringType(), StringType(), IntegerType()]
-    for i in range(len(col_names_new)):
-        df = df.withColumn(col_names_new[i], df[col_names_new[i]].cast(schema_new[i]))
-
+    if package_for_df == 'spark':
+        schema_new = [IntegerType(), StringType(), IntegerType(), FloatType(), FloatType(),
+                      FloatType(), IntegerType(), StringType(), StringType(), IntegerType()]
+        for i in range(len(col_names_new)):
+            df = df.withColumn(col_names_new[i], df[col_names_new[i]].cast(schema_new[i]))
+    else:
+        schema_new = [int, str, int, float, float, int, int, str, str, int]
+        for i in range(len(col_names_new)):
+            col = col_names_new
+            df[col] == df[col].astype(schema_new[i])
+              
     return df 
    
 
-def select_col(df):
+def select_col(df, package_for_df='spark'):
     '''select columns: id_str, time, latidude, and longitude, accuracy
        'accuracy' column is not needed now, but is kept for possible future use
     '''
     
     col_select = ['time', 'latitude', 'longitude', 'id_str', 'accuracy']
-    df_select = df.select(*col_select)
+    
+    if package_for_df == 'spark':
+        df_select = df.select(*col_select)
+    else:
+        df_select = df[col_select]
     
     return df_select
 
     
-def remove_error_entry(df):
+def remove_error_entry(df, package_for_df='spark'):
     
     '''remove entries with erreneous value of coordinates and 'id_str'.
        There can be errors in the latitude or longitude. E.g., the min of latitude is -14400
@@ -106,11 +118,19 @@ def remove_error_entry(df):
       
     lat_min, lat_max = -90, 90
     lon_min, lon_max = -180, 180
-    df = df.filter((df.latitude<=lat_max) & (df.latitude>=lat_min) &
-                   (df.longitude<=lon_max) & (df.longitude>=lon_min))
-
     id_str_len_min = 15
-    df = df.filter(length(col('id_str')) > id_str_len_min)
+    
+    if package_for_df == 'spark':
+        df = df.filter((df.latitude<=lat_max) & (df.latitude>=lat_min) &
+                       (df.longitude<=lon_max) & (df.longitude>=lon_min))
+    
+        
+        df = df.filter(length(col('id_str')) > id_str_len_min)
+    else:
+        df = df[(df.latitude<=lat_max) & (df.latitude>=lat_min) &
+                (df.longitude<=lon_max) & (df.longitude>=lon_min)]
+        
+        df = df[df.id_str.str.len() > id_str_len_min]
     
     return df
     
@@ -140,7 +160,7 @@ def save_df(df, location='Albany', date='20200316'):
     return None
 
 
-def get_data_for_indiv(df, is_save=False):
+def get_data_for_indiv(df, package_for_df='spark', is_save=False):
     '''
     Get the coordinates and time for each individual from the df that include trajectory data for some time, e.g. 2 months.
 
@@ -156,34 +176,38 @@ def get_data_for_indiv(df, is_save=False):
     
     # TODO: finding unique ids is very slow. Need to improve the speed.
     # id_unique = [i for i in df.select('id_str').distinct().collect()]
-    id_uniq = [x.id_str for x in df.select('id_str').distinct().collect()] 
+    if package_for_df == 'spark':
+        id_uniq = [x.id_str for x in df.select('id_str').distinct().collect()]
+    else:
+        id_uniq = df['id_str'].unique().compute()
 
-    id = id_uniq[0]
+    days_need_min = 30
     for id in id_uniq:
         df_for_indiv = df.filter(df.id_str == id)  #.collect()
         
         # only keep the df for individual with more than 30 days' data
         time_datetime = datetime.fromtimestamp(df_for_indiv.select['time'].collect())
         
-              
-        if is_save:
-            csv_path_and_name = path_location + '/' + date + '00.csv'    
-            df.write.csv(csv_path_and_name)
+        if ( (time_datetime.max() - time_datetime.min()) > days_need_min ) & is_save:
+            csv_path_and_name = path_location + '/' + id + '.csv'    
+            df_for_indiv.write.csv(csv_path_and_name)
     
     
-    return df_for_indiv
+    return None
 
     
-def main(is_save=False, package='spark'):
+def main(is_save=False, package_for_df='spark'):
     
     # set the absolute path when run within python IDE
     # os.chdir("C:/Users/Administrator/OneDrive/GitHub/Scale_Mobility/src")
+    # os.chdir("C:/Users/Jinzh/OneDrive/GitHub/Scale_Mobility/src")
+    
     path_data = '../data'
     location = 'Albany'
-    date = '20200316'
+    date = '20200207'
 
     # load data, change column data type, and select columns for time and coordinates
-    package_for_df = 'dd'    
+    package_for_df = 'spark'    
     df = load_data(path_data, location, date, package_for_df)
 
     df = rename_col(df)
