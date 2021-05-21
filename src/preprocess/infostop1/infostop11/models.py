@@ -109,7 +109,7 @@ class Infostop:
 
 
     def fit_predict(self, data):
-        """Fit Infostop on one or more location sequnces, and return labels.
+        """Fit Infostop on one or more location sequences, and return labels.
 
         Parameters
         ----------
@@ -126,8 +126,8 @@ class Infostop:
         Example
         -------
             >>> model = Infostop()
-            >>> labels = model.fit_predict(traces)
-            >>> assert type(traces) == type(labels)
+            >>> labels = model.(traces)
+            >>> assert type(tracefit_predicts) == type(labels)
         """
         
         if self.verbose: progress = tqdm

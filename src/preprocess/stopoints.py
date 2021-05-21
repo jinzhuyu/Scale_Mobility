@@ -47,14 +47,17 @@ def infer_stop_points(pathraw,path_output):
             #labels = model_infostop.fit_predict(df_temp[['latitude', 'longitude', 'time']].values)
 
             try:
+                # what are labels: transition -1; if stops, then the stop id, such as 1, 2, 3,
                 labels = model_infostop.fit_predict(df_temp[['latitude','longitude','time']].values)
             except:
                 finding_stops=False
+                
+            # remove labels that are transitions    
             if finding_stops==True and np.max(labels)>1:
                 count = 0
                 df_ouput = pd.DataFrame(columns=['individual', 'label', 'start', 'end', 'latitude', 'longitude'])
                 position_dict=dict(zip(df_temp['time'].values,df_temp[['latitude','longitude']].values))
-                trajectory = infostop.postprocess.compute_intervals(labels,df_temp['time'].values)
+                trajectory = infostop.postprocess.compute_intervals(labels, df_temp['time'].values)
                 for i in range(len(trajectory)):
                     time_here=trajectory[i][1]
                     lat_temp=position_dict[time_here][0]
@@ -62,6 +65,7 @@ def infer_stop_points(pathraw,path_output):
                     df_ouput.loc[count]=[individual]+trajectory[i]+[position_dict[time_here][0],position_dict[time_here][1]]
                     count+=1
                 df_ouput.to_csv(path_output+individual+'.csv',index = False)
+                # stop point for individual, time and cooridinates at stop points
 
 os.chdir("./preprocess")
 def main():
