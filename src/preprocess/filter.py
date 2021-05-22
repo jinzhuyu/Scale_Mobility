@@ -13,7 +13,7 @@ from pathlib import Path
 # import and set up pyspark configuration
 import findspark
 findspark.init()
-# from pyspark import SparkConf, SparkContext
+from pyspark.sql import SparkSession
 from pyspark.sql import*
 from pyspark.sql.types import*
 from pyspark.sql.functions import col, length
@@ -226,7 +226,7 @@ def retrieve_data_of_indiv(df, days_need_min=1, package_for_df='spark', is_save=
             return 0
         
 
-    is_indiv_save = list( map( loop_over_indiv, id_uniq[50], list( range(len(id_uniq[:50])) ) ) )
+    is_indiv_save = list( map( loop_over_indiv, id_uniq[5], list( range(len(id_uniq[:5])) ) ) )
     
     return is_indiv_save
 
@@ -237,6 +237,7 @@ def main(is_save=False, package_for_df='spark'):
     # set the absolute path when run within python IDE
     # os.chdir("C:/Users/Administrator/OneDrive/GitHub/Scale_Mobility/src")
     # os.chdir("C:/Users/Jinzh/OneDrive/GitHub/Scale_Mobility/src")
+    # os.chdir("/home/jayz/Documents/GitHub/Scale_Mobility/src")
     
     path_data = '../data'
     location = 'Albany'
