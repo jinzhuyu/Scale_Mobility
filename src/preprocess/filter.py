@@ -3,16 +3,16 @@
 @author: Jinzhu Yu
 """
 
-import pandas as pd
-import dask
-import dask.dataframe as dd
+#import pandas as pd
+#import dask
+#import dask.dataframe as dd
 from datetime import datetime
 import os
 from pathlib import Path
 
 # import and set up pyspark configuration
 import findspark
-findspark.init('C:/Spark/spark-3.0.0-bin-hadoop2.7')
+findspark.init()
 # from pyspark import SparkConf, SparkContext
 from pyspark.sql import*
 from pyspark.sql.types import*
