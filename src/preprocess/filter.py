@@ -203,7 +203,7 @@ def retrieve_data_of_indiv(df, days_need_min=1, package_for_df='spark', is_save=
 
     def loop_over_indiv(id_indiv, i):
         
-        if ( (i >= 1) & (i%100==0) ):
+        if ( (i>=1) & (i%100==0) ):
             print('\n ===== retrieving the data for {}-th individual among {} ====='. format(i, len(id_uniq)))
      
         df_of_indiv = df.filter(df.id_str == id_indiv)  #.collect()
@@ -220,9 +220,7 @@ def retrieve_data_of_indiv(df, days_need_min=1, package_for_df='spark', is_save=
             save_df_indiv(df=df_of_indiv, id_indiv = id_indiv)
             
             return 1
-        
         else:
-            
             return 0
         
 
