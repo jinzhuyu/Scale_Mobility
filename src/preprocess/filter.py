@@ -6,23 +6,24 @@
 #import pandas as pd
 #import dask
 #import dask.dataframe as dd
+import numpy as np
 from datetime import datetime
+from functools import reduce
 import os
 from pathlib import Path
 
 # import and set up pyspark configuration
 import findspark
 findspark.init()
-from pyspark.sql import SparkSession
+# from pyspark.sql import SparkSession
 from pyspark.sql import*
 from pyspark.sql.types import*
-from pyspark.sql.functions import col, length
+from pyspark.sql.functions import col, length, lit
 # #set an application name 
 # #start spark cluster; if already started then get it else create it 
 sc = SparkSession.builder.appName('data_preprocess').master("local[*]").getOrCreate()
 #initialize SQLContext from spark cluster 
 sqlContext = SQLContext(sparkContext=sc.sparkContext, sparkSession=sc)
-
 
 
 
@@ -113,14 +114,14 @@ def remove_error_entry(df, package_for_df='spark'):
     id_str_len_min = 15
     
     if package_for_df == 'spark':
-        df = df.filter((df.latitude<=lat_max) & (df.latitude>=lat_min) &
-                       (df.longitude<=lon_max) & (df.longitude>=lon_min))
+        df = df.filter((df.latitude<=lat_max) and (df.latitude>=lat_min) and
+                       (df.longitude<=lon_max) and (df.longitude>=lon_min))
     
         
         df = df.filter(length(col('id_str')) > id_str_len_min)
     else:
-        df = df[(df.latitude<=lat_max) & (df.latitude>=lat_min) &
-                (df.longitude<=lon_max) & (df.longitude>=lon_min)]
+        df = df[(df.latitude<=lat_max) and (df.latitude>=lat_min) and
+                (df.longitude<=lon_max) and (df.longitude>=lon_min)]
         
         df = df[df.id_str.str.len() > id_str_len_min]
     
@@ -154,29 +155,29 @@ def save_df_traj(df, location='Albany', date='20200316'):
 
 def save_df_indiv(df, id_indiv):
     '''save the df to the folder for the current individual
-         within 'data_of_indiv' folder, which is on the same level of the 'data' folder'
+         within 'data_indiv' folder, which is on the same level of the 'data' folder'
          
     Parameters
     ----------
-    df : spark df containing the trajectory data for all individuals for at least 30 days
+    df : spark df containing the trajectory data for all individuals that have data for at least 30 days
          
     '''
 
     # create a new folder if it does not exist 
     path_parent = str(Path(os.getcwd()).parent)  # get parent path of src
-    path_data_of_indiv =  '../data_of_indiv'
+    path_data_indiv =  '../data_of_indiv'
     
-    if not os.path.isdir(path_data_of_indiv):
-        path_data_of_indiv_abs = path_parent + path_data_of_indiv.replace('.', '')
-        os.makedirs(path_data_of_indiv_abs)
+    if not os.path.isdir(path_data_indiv):
+        path_data_indiv_abs = path_parent + path_data_indiv.replace('.', '')
+        os.makedirs(path_data_indiv_abs)
         
-    csv_path_and_name = path_data_of_indiv + '/' + '.csv'    
+    csv_path_and_name = path_data_indiv + '/' + '.csv'    
     df.write.csv(csv_path_and_name)
     
     return None
 
 
-def retrieve_data_of_indiv(df, days_need_min=1, package_for_df='spark', is_save=False):
+def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=False):
     '''
     Get the coordinates and time for each individual from the df that include trajectory data for some time, e.g. 2 months.
 
@@ -199,11 +200,11 @@ def retrieve_data_of_indiv(df, days_need_min=1, package_for_df='spark', is_save=
     id_uniq = [x.id_str for x in df.select('id_str').distinct().collect()]
     # else:
     #     print('Using dask')
-    #     id_uniq = df['id_str'].unique().compute()
-
-    def loop_over_indiv(id_indiv, i):
+    #     id_uniq = df['id_str'].unique().compute()            
+            
+    def retrive_data_indiv(id_indiv, i):
         
-        if ( (i>=1) & (i%100==0) ):
+        if ( (i>=1) and (i%100==0) ):
             print('\n ===== retrieving the data for {}-th individual among {} ====='. format(i, len(id_uniq)))
      
         df_of_indiv = df.filter(df.id_str == id_indiv)  #.collect()
@@ -216,15 +217,123 @@ def retrieve_data_of_indiv(df, days_need_min=1, package_for_df='spark', is_save=
                             time_timestamp) )
         
         date_uniq = list(set(time_str))  # unique dates
-        if (len(date_uniq) >= days_need_min) & is_save:
-            save_df_indiv(df=df_of_indiv, id_indiv = id_indiv)
-            
-            return 1
-        else:
-            return 0
-        
+        if len(date_uniq) >= days_need_min:
+            if is_save:
+                save_df_indiv(df=df_of_indiv, id_indiv = id_indiv)
+                
+                is_indiv_save = 1
+            else:
+                is_indiv_save = 0
+                
+        return is_indiv_save, df_of_indiv
 
-    is_indiv_save = list( map( loop_over_indiv, id_uniq[5], list( range(len(id_uniq[:5])) ) ) )
+    def create_empty_spark_df():
+        # create empty pyspark df for stop points
+        field_temp = [StructField("id_indiv", StringType(), True),
+                      StructField("label", StringType(), True),
+                      StructField("start", IntegerType(), True),
+                      StructField("end", IntegerType(), True),
+                      StructField("latitude", FloatType(), True),
+                      StructField("longitude", FloatType(), True)]
+        schema_temp = StructType(field_temp)
+        df_stoppint = sqlContext.createDataFrame(sc.sparkContext.emptyRDD(), schema_temp)
+        
+        return df_stoppint
+    
+    def infer_indiv_stoppoint(df = df_of_indiv):
+        '''
+        infer the stop points of each individual given their trajectory data
+
+        Parameters
+        ----------
+        df_of_indiv : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        '''
+        # dependent function from the package infostop
+        # def compute_intervals(coords, coord_labels, max_time_between=86400, distance_metric="haversine"):
+        # """Compute stop and moves intervals from the list of labels.
+        
+        # Parameters
+        # ----------
+        #     coords : np.array (shape=(N, 2) or shape=(N,3))
+        #     coord_labels: 1d np.array of integers
+    
+        # Returns
+        # -------
+        #     intervals : array-like (shape=(N_intervals, 5))
+        #         Columns are "label", "start_time", "end_time", "latitude", "longitude"
+        
+        # """  
+        
+        id_indiv = df.loc[0, 'id_str']
+        
+        # if np.any(np.isnan(np.vstack(df_temp[['latitude', 'longitude', 'time']].values)))==False:
+        traj_array =  np.array(df.select('latitude','longitude','time').collect())
+        time_array = traj_array[:, 2]
+        coord_array = traj_array[:, :2]
+            
+        r1 , r2 = 30, 30
+        min_staying_time, max_time_between = 600, 86400
+        model_infostop = infostop.Infostop(r1 =r1, r2 =r2,
+                                           label_singleton=False,
+                                           min_staying_time = min_staying_time,
+                                           max_time_between = max_time_between,
+                                           min_size = 2)
+
+        try:
+            # what are labels: transition -1; if stops, then the stop id, such as 1, 2, 3,
+            labels = model_infostop.fit_predict(traj_array)
+            is_stop_found = True
+        except:
+            is_stop_found = False       
+    
+        # remove points with labels indicating transition stops
+        # create empty pyspark df
+        df_stoppint = create_empty_spark_df()
+
+        if is_stop_found and ( np.max(labels)>1 ):
+            # create empty df with columns names
+            trajectory = infostop.postprocess.compute_intervals(labels, time_array)    
+
+                       
+            # keep the time and coordinates for stop points only among time and coordinates;
+            # those for transition stops will be filtered out
+            time_from_trajectory = trajectory[:, 0][:, None]
+            idx_stoppoint = (time_array==time_from_trajectory).any(axis=-1)
+            time_keep = time_array[idx_stoppoint]
+            coord_keep = coord_array[idx_stoppoint, :]
+            traj_data_stoppoint = trajectory[idx_stoppoint, :]
+
+            # fill the respective columns
+            col_names_temp = ['label', 'start', 'end']
+            for i in range(len(col_names_temp)):
+                df_stoppint.withColumn(col_names_temp[i], traj_data_stoppoint[:, i])
+        
+            df_stoppint.withColumn("latitude", coord_keep[:, 0])
+            df_stoppint.withColumn("longitude", coord_keep[:, 1])
+            
+            df_stoppint.withColumn("id_indiv", lit(id_indiv)) # fill with the same value
+            # trajectory[i] = ['label', 'start', 'end']            
+     
+        return df_stoppint
+
+
+    n_indiv_temp = 5
+    
+    # list of df that is generated by applying nested functions
+    infer_indiv_stoppoint(df = df_of_indiv); is_indiv_save, df_of_indiv = retrive_data_indiv(id_indiv, i)
+    
+    is_indiv_save = list( map( loop_over_indiv, id_uniq[n_indiv_temp], list( range(len(id_uniq[:n_indiv_temp])) ) ) )
+    # is_indiv_save = list( map( loop_over_indiv, id_uniq, list( range(len(id_uniq)) ) ) )  
+    # list of dfs 
+    n_divide = 10
+    
+    df_stoppint_merged = reduce(DataFrame.union, list_of_dfs)  
     
     return is_indiv_save
 
@@ -255,7 +364,9 @@ def main(is_save=False, package_for_df='spark'):
         
     # retrieve the trajectory data of each individual
     days_need_min = 30
-    retrieve_data_of_indiv(df, days_need_min, package_for_df)
+    
+    # try on 5 individuals for now. See the value "n_indiv_temp" in the "retrieve_data_indiv" function
+    retrieve_data_indiv(df, days_need_min, package_for_df)
         
     return None
 
