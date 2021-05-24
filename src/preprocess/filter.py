@@ -12,6 +12,8 @@ from functools import reduce
 import os
 from pathlib import Path
 
+import infostop
+
 # import and set up pyspark configuration
 import findspark
 findspark.init()
@@ -24,7 +26,6 @@ from pyspark.sql.functions import col, length, lit
 sc = SparkSession.builder.appName('data_preprocess').master("local[*]").getOrCreate()
 #initialize SQLContext from spark cluster 
 sqlContext = SQLContext(sparkContext=sc.sparkContext, sparkSession=sc)
-
 
 
 ###################
@@ -43,8 +44,8 @@ def load_data(path_data='../data', location='Albany', date='20200207', package_f
         
     #load raw data
     os.chdir(path_data)
-    # path_datafile = os.path.join(os.getcwd(), '{}\\{}00.csv.gz'.format(location, date))
-    path_datafile = os.path.join(os.getcwd(), '{}\\*.csv.gz'.format(location)) #load all csv.gz files at once
+    # path_datafile = os.path.join(os.getcwd(), '{}/{}00.csv.gz'.format(location, date))
+    path_datafile = os.path.join(os.getcwd(), '{}/*.csv.gz'.format(location)) #load all csv.gz files at once
     
     # select the package used to load data, spark, pd (pandas), or dd (dask)
     if package_for_df == 'spark':
@@ -52,8 +53,12 @@ def load_data(path_data='../data', location='Albany', date='20200207', package_f
     else:
         df = dd.read_csv(path_datafile, compression='gzip', error_bad_lines=False)
 
-    return df 
+    #change back to the default trajectory
+    os.chdir('../src')
 
+    return df
+
+# df_of_indiv = sqlContext.read.csv('/home/jayz/Documents/GitHub/Scale_Mobility/data/data_indiv/indiv_1.csv', header=True)
 
 def rename_col(df, package_for_df='spark'):
     '''rename the columns. The columns in the resultant df from loading data with spark are all of string type.
@@ -114,14 +119,13 @@ def remove_error_entry(df, package_for_df='spark'):
     id_str_len_min = 15
     
     if package_for_df == 'spark':
-        df = df.filter((df.latitude<=lat_max) and (df.latitude>=lat_min) and
-                       (df.longitude<=lon_max) and (df.longitude>=lon_min))
+        df = df.filter((df.latitude<=lat_max) & (df.latitude>=lat_min) &
+                       (df.longitude<=lon_max) & (df.longitude>=lon_min))
     
-        
         df = df.filter(length(col('id_str')) > id_str_len_min)
     else:
-        df = df[(df.latitude<=lat_max) and (df.latitude>=lat_min) and
-                (df.longitude<=lon_max) and (df.longitude>=lon_min)]
+        df = df[(df.latitude<=lat_max) & (df.latitude>=lat_min) &
+                (df.longitude<=lon_max) & (df.longitude>=lon_min)]
         
         df = df[df.id_str.str.len() > id_str_len_min]
     
@@ -202,7 +206,7 @@ def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=Fals
     #     print('Using dask')
     #     id_uniq = df['id_str'].unique().compute()            
             
-    def retrive_data_indiv(id_indiv, i):
+    def retrive_data_indiv(id_indiv, i, days_need_min=1, is_save=False):
         
         if ( (i>=1) and (i%100==0) ):
             print('\n ===== retrieving the data for {}-th individual among {} ====='. format(i, len(id_uniq)))
@@ -217,13 +221,11 @@ def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=Fals
                             time_timestamp) )
         
         date_uniq = list(set(time_str))  # unique dates
+        is_indiv_save = 0
         if len(date_uniq) >= days_need_min:
             if is_save:
-                save_df_indiv(df=df_of_indiv, id_indiv = id_indiv)
-                
+                save_df_indiv(df=df_of_indiv, id_indiv = id_indiv)               
                 is_indiv_save = 1
-            else:
-                is_indiv_save = 0
                 
         return is_indiv_save, df_of_indiv
 
@@ -273,7 +275,7 @@ def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=Fals
         id_indiv = df.loc[0, 'id_str']
         
         # if np.any(np.isnan(np.vstack(df_temp[['latitude', 'longitude', 'time']].values)))==False:
-        traj_array =  np.array(df.select('latitude','longitude','time').collect())
+        traj_array =  np.array(df_of_indiv.na.drop(how="any").select('latitude','longitude','time').collect())
         time_array = traj_array[:, 2]
         coord_array = traj_array[:, :2]
             
