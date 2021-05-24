@@ -7,6 +7,7 @@
 #import dask
 #import dask.dataframe as dd
 import numpy as np
+import pandas as pd
 from datetime import datetime
 from functools import reduce
 import os
@@ -177,6 +178,152 @@ def save_df_indiv(df, id_indiv):
     return None
 
 
+def retrieve_data_indiv(id_indiv, i, days_need_min=1, is_save=False):
+    
+    if ( (i>=1) and (i%100==0) ):
+        print('\n ===== retrieving the data for {}-th individual among {} ====='. format(i, len(id_uniq)))
+ 
+    df_of_indiv = df.filter(df.id_str == id_indiv)  #.collect()
+    
+    # only keep the df for individual with data for every single day in at least 30 days
+    # retrieve time data and convert to datetime
+    time_timestamp  = [row.time for row in df_of_indiv.collect()]
+    # convert unix timestamp to string time
+    time_str= list( map(lambda num: datetime.fromtimestamp(num).strftime('%Y-%m-%d'),
+                        time_timestamp) )
+    
+    date_uniq = list(set(time_str))  # unique dates
+    # is_indiv_save = 0
+    if len(date_uniq) >= days_need_min:
+        if is_save:
+            save_df_indiv(df=df_of_indiv, id_indiv = id_indiv)               
+            
+    return df_of_indiv
+
+
+def create_empty_spark_df():
+    # create empty pyspark df for stop points
+    field_temp = [StructField("id_indiv", StringType(), True),
+                  StructField("label", IntegerType(), True),
+                  StructField("start", IntegerType(), True),
+                  StructField("end", IntegerType(), True),
+                  StructField("latitude", FloatType(), True),
+                  StructField("longitude", FloatType(), True)]
+    schema_temp = StructType(field_temp)
+    df = sqlContext.createDataFrame(sc.sparkContext.emptyRDD(), schema_temp)
+    
+    return df 
+
+
+def infer_indiv_stoppoint(df_of_indiv):
+    '''
+    infer the stop points of each individual given their trajectory data
+
+    Parameters
+    ----------
+    df_of_indiv : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    '''
+    # dependent function from the package infostop
+    # def compute_intervals(coords, coord_labels, max_time_between=86400, distance_metric="haversine"):
+    # """Compute stop and moves intervals from the list of labels.
+    
+    # Parameters
+    # ----------
+    #     coords : np.array (shape=(N, 2) or shape=(N,3))
+    #     coord_labels: 1d np.array of integers
+
+    # Returns
+    # -------
+    #     intervals : array-like (shape=(N_intervals, 5))
+    #         Columns are "label", "start_time", "end_time", "latitude", "longitude"
+    
+    # """  
+    
+    id_indiv = df_of_indiv.loc[0, 'id_str']
+    
+    # if np.any(np.isnan(np.vstack(df_temp[['latitude', 'longitude', 'time']].values)))==False:
+        # drop na values: df_of_indiv.na.drop(how="any"); np.any(np.isnan(traj_array))
+        # i =6; df_of_indiv = retrieve_data_indiv(id_uniq[i], i)
+    # sort by time to be used in infostop model
+    df_of_indiv = df_of_indiv.sort(df_of_indiv.time.asc())
+    
+    # convert to array
+    traj_all =  np.array(df_of_indiv.select('latitude','longitude','time').collect())
+    time_all = traj_all[:, 2]
+    coord_all = traj_all[:, :2]
+        
+    # define model
+    # max distance between time-consecutive points to label them as stationary, and max distance between stationary points to form an edge.
+    r1 , r2 = 30, 30 
+    min_staying_time, max_time_between = 600, 86400  # in seconds
+    model_infostop = infostop.Infostop(r1 =r1, r2 =r2,
+                                       label_singleton=False,
+                                       min_staying_time = min_staying_time,
+                                       max_time_between = max_time_between,
+                                       min_size = 2)
+
+    # infer stops
+    try:
+        # labels are for stops: transition -1; positive integer indicates stop id, such as 1, 2, 3,
+        labels = model_infostop.fit_predict(traj_all)
+        is_stop_found = True
+    except:
+        print("\n ===== Oops! Failed to find stop point for individual: {} ===== ".format(id_indiv))
+        is_stop_found = False       
+
+    # get the coordinates of the stop points
+    n_stop = np.max(labels)
+    if is_stop_found and (n_stop>=2):
+        # get stop id, t_start, t_end
+        traj_at_stop = infostop.postprocess.compute_intervals(labels, time_all)
+
+        # get coordinates for stop points only;
+        # those for transition stops will be filtered out
+        traj_at_stop = np.array(traj_at_stop)
+        
+        time_at_stop_start = traj_at_stop[:, 1]  #[:, None]
+        idx_at_stop = np.where( np.in1d(time_all, time_at_stop_start) )[0]  #.any(axis=-1)
+        coord_at_stop = coord_all[idx_at_stop, :]
+
+        # store the data in a pyspark df. Create pandas df then convert to spark df
+        
+        # col_temp_rdd = sc.sparkContext.parallelize(col_temp)
+        # a = sc.createDataFrame([("Dog", "Cat"), ("Cat", "Dog"), ("Mouse", "Cat")],["Animal", "Enemy"])
+        # a_add = sc.createDataFrame(a.rdd.zip(ratingrdd).map(lambda x: (x[0][0], x[0][1], x[1])), 
+        #                            ["Animal", "Enemy", "Rating"])
+        
+        df_at_stop = pd.DataFrame(columns = ['label',
+                                             'start','end',
+                                             'latitude','longitude',
+                                             'id_indiv'])                
+        
+        col_names_subset = ['label', 'start', 'end']
+        for i in range(len(col_names_subset)):
+            df_at_stop[col_names_subset[i]] =  traj_at_stop[:, i]
+            
+        df_at_stop['latitude'], df_at_stop['longitude'] =  coord_at_stop[:, 0], coord_at_stop[:, 1]
+        df_at_stop['id_indiv'] = id_indiv
+        
+        # convert to psypark df
+        df_at_stop = sc.createDataFrame(df_at_stop)
+        # change double to int
+        schema_new = [IntegerType(), IntegerType(), IntegerType()]
+        for i in range(len(col_names_subset)):
+            df_at_stop = df_at_stop.withColumn(col_names_subset[i], df_at_stop[col_names_subset[i]].cast(schema_new[i]))
+    
+    else:
+        # create empty pyspark df
+        df_at_stop = create_empty_spark_df()
+ 
+    return df_at_stop
+
+
 def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=False):
     '''
     Get the coordinates and time for each individual from the df that include trajectory data for some time, e.g. 2 months.
@@ -201,147 +348,27 @@ def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=Fals
     # else:
     #     print('Using dask')
     #     id_uniq = df['id_str'].unique().compute()            
-            
-    def retrieve_data_indiv(id_indiv, i, days_need_min=1, is_save=False):
+          
+    n_indiv_temp = 5
+    
+    # list of df that is generated by applying nested functions
+    def loop_over_indiv(id_indiv, i):
         
-        if ( (i>=1) and (i%100==0) ):
-            print('\n ===== retrieving the data for {}-th individual among {} ====='. format(i, len(id_uniq)))
-     
-        df_of_indiv = df.filter(df.id_str == id_indiv)  #.collect()
+        df_of_indiv = retrieve_data_indiv(id_indiv, i)
         
-        # only keep the df for individual with data for every single day in at least 30 days
-        # retrieve time data and convert to datetime
-        time_timestamp  = [row.time for row in df_of_indiv.collect()]
-        # convert unix timestamp to string time
-        time_str= list( map(lambda num: datetime.fromtimestamp(num).strftime('%Y-%m-%d'),
-                            time_timestamp) )
-        
-        date_uniq = list(set(time_str))  # unique dates
-        # is_indiv_save = 0
-        if len(date_uniq) >= days_need_min:
-            if is_save:
-                save_df_indiv(df=df_of_indiv, id_indiv = id_indiv)               
-                
-        return df_of_indiv
-
-    def create_empty_spark_df():
-        # create empty pyspark df for stop points
-        field_temp = [StructField("id_indiv", StringType(), True),
-                      StructField("label", IntegerType(), True),
-                      StructField("start", IntegerType(), True),
-                      StructField("end", IntegerType(), True),
-                      StructField("latitude", FloatType(), True),
-                      StructField("longitude", FloatType(), True)]
-        schema_temp = StructType(field_temp)
-        df = sqlContext.createDataFrame(sc.sparkContext.emptyRDD(), schema_temp)
+        df = infer_indiv_stoppoint(df_of_indiv)
         
         return df
     
-    def infer_indiv_stoppoint(df = df_of_indiv):
-        '''
-        infer the stop points of each individual given their trajectory data
-
-        Parameters
-        ----------
-        df_of_indiv : TYPE
-            DESCRIPTION.
-
-        Returns
-        -------
-        None.
-
-        '''
-        # dependent function from the package infostop
-        # def compute_intervals(coords, coord_labels, max_time_between=86400, distance_metric="haversine"):
-        # """Compute stop and moves intervals from the list of labels.
-        
-        # Parameters
-        # ----------
-        #     coords : np.array (shape=(N, 2) or shape=(N,3))
-        #     coord_labels: 1d np.array of integers
-    
-        # Returns
-        # -------
-        #     intervals : array-like (shape=(N_intervals, 5))
-        #         Columns are "label", "start_time", "end_time", "latitude", "longitude"
-        
-        # """  
-        
-        id_indiv = df.loc[0, 'id_str']
-        
-        # if np.any(np.isnan(np.vstack(df_temp[['latitude', 'longitude', 'time']].values)))==False:
-            # drop na values: df_of_indiv.na.drop(how="any"); np.any(np.isnan(traj_array))
-            # i =6; df_of_indiv = retrieve_data_indiv(id_uniq[i], i)
-        # sort by time to be used in infostop model
-        df_of_indiv = df_of_indiv.sort(df_of_indiv.time.asc())
-        
-        # convert to array
-        traj_all =  np.array(df_of_indiv.select('latitude','longitude','time').collect())
-        time_all = traj_all[:, 2]
-        coord_all = traj_all[:, :2]
-            
-        # define model
-        # max distance between time-consecutive points to label them as stationary, and max distance between stationary points to form an edge.
-        r1 , r2 = 30, 30 
-        min_staying_time, max_time_between = 600, 86400  # in seconds
-        model_infostop = infostop.Infostop(r1 =r1, r2 =r2,
-                                           label_singleton=False,
-                                           min_staying_time = min_staying_time,
-                                           max_time_between = max_time_between,
-                                           min_size = 2)
-
-        # infer stops
-        try:
-            # labels are for stops: transition -1; positive integer indicates stop id, such as 1, 2, 3,
-            labels = model_infostop.fit_predict(traj_all)
-            is_stop_found = True
-        except:
-            print("\n ===== Oops! Failed to find stop point for individual: {} ===== ".format(id_indiv))
-            is_stop_found = False       
-    
-        # get the coordinates for the identifid stop points
-        # create empty pyspark df
-        df_at_stop = create_empty_spark_df()
-
-        n_stop = np.max(labels)
-        if is_stop_found and (n_stop>=2):
-            # get stop id, t_start, t_end
-            traj_at_stop = infostop.postprocess.compute_intervals(labels, time_all)
-
-            # get coordinates for stop points only;
-            # those for transition stops will be filtered out
-            time_at_stop_start = np.array(traj_at_stop)[:, 1]  #[:, None]
-            idx_at_stop = np.where( np.in1d(time_all, time_at_stop_start) )[0]  #.any(axis=-1)
-            coord_at_stop = coord_all[idx_at_stop, :]
-
-            # fill the olumns
-            col_names_temp = ['label', 'start', 'end']
-            for i in range(len(col_names_temp)):
-                df_stoppint.withColumn(col_names_temp[i], np.array(traj_at_stop)[:, i].tolist())
-            
-            df_stoppint.withColumn("latitude", coord_at_stop[:, 0])
-            df_stoppint.withColumn("longitude", coord_at_stop[:, 1])
-            
-            df_stoppint.withColumn("id_indiv", lit(id_indiv)) # fill with the same id           
-     
-        return df_at_stop
-
-
-    n_indiv_temp = 5
-    
-    # TODO: retrieve data and then infer stop points for each individual
-    # use reduce instead of a for loop
-    # list of df that is generated by applying nested functions
-    infer_indiv_stoppoint(df = df_of_indiv); is_indiv_save, df_of_indiv = retrieve_data_indiv(id_indiv, i)
-    
-    is_indiv_save = list( map( loop_over_indiv, id_uniq[n_indiv_temp], list( range(len(id_uniq[:n_indiv_temp])) ) ) )
+    stoppint_dfs_list = list(map(loop_over_indiv,
+                                 id_uniq[n_indiv_temp],
+                                 list( range(len(id_uniq[:n_indiv_temp])) )))
     # is_indiv_save = list( map( loop_over_indiv, id_uniq, list( range(len(id_uniq)) ) ) )  
-    # list of dfs 
-    n_divide = 10
+    # n_divide = 10
     
-    df_stoppint_merged = reduce(DataFrame.union, list_of_dfs)  
+    df_stoppint_merged = reduce(DataFrame.union, stoppint_dfs_list)  
     
-    return is_indiv_save
+    return df_stoppint_merged
 
 
 # def run_data_process()    
