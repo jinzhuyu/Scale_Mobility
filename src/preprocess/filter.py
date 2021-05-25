@@ -378,6 +378,7 @@ def main(is_save=False, package_for_df='spark'):
     # os.chdir("C:/Users/Administrator/OneDrive/GitHub/Scale_Mobility/src")
     # os.chdir("C:/Users/Jinzh/OneDrive/GitHub/Scale_Mobility/src")
     # os.chdir("/home/jayz/Documents/GitHub/Scale_Mobility/src")
+    # os.chdir("/mnt/c/Users/Jinzh/OneDrive/GitHub/Scale_Mobility/src")
     
     
     # TODO:
