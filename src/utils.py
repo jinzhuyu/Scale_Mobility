@@ -30,3 +30,18 @@ def get_code_profile(func):
     print("\n\n\n")
     print("\n ===== Profile of the code for the {} function=====".format(func))
     stats.print_stats()
+    
+
+
+import pyspark.sql.functions as F
+def append_dfs(df1, df2):
+    
+    list1 = df1.columns
+    list2 = df2.columns
+    for col_temp in list2:
+        if(col_temp not in list1):
+            df1 = df1.withColumn(col_temp, F.lit(None))
+    for col_temp in list1:
+        if(col_temp not in list2):
+            df2 = df2.withColumn(col_temp, F.lit(None))
+    return df1.unionByName(df2)
