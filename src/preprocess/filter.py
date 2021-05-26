@@ -184,7 +184,7 @@ def save_df_indiv(df, id_indiv):
     return None
 
 
-def retrieve_data_indiv(id_indiv, i, days_need_min=1, is_save=False):
+def retrieve_data_indiv(id_indiv, i, days_need_min=30, is_save=False):
      
     df_of_indiv = df.filter(df.id_str == id_indiv)  #.collect()
     
@@ -324,7 +324,7 @@ def loop_over_indiv(id_indiv, i):
     return df_at_stop
 
 
-def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=False):
+def process_traj_indiv(df, days_need_min=30, package_for_df='spark', is_save=False):
     '''
     Get the coordinates and time for each individual from the df that include trajectory data for some time, e.g. 2 months.
 
@@ -349,11 +349,10 @@ def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=Fals
     # stoppint_dfs_list = list(map(loop_over_indiv,
     #                              id_uniq, list( range(len(id_uniq)) )))
  
-    # i = 20
-    # id_indiv = id_uniq[i]  
+ 
     # n_divide = 10
-    
-    n_indiv_temp = 1000     
+    # try with 1000 individuals first
+    n_indiv_temp = 500     
     stoppint_dfs_list = list(map(loop_over_indiv,
                                  id_uniq[:n_indiv_temp],
                                  list( range(len(id_uniq[:n_indiv_temp])) )))
@@ -363,7 +362,6 @@ def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=Fals
     
     print('\n ===== The total number of individuals is: {} ====='.format(len(id_uniq)))
     
-
     # merge the returned dfs
     df_stoppint_merged = reduce(lambda x, y: append_dfs(x, y),
                                 stoppint_dfs_list)
@@ -388,7 +386,7 @@ def main(is_save=False, package_for_df='spark'):
     location = 'Albany'
     date = '20200207'
     
-    days_need_min = 1
+    days_need_min = 30
 
     # load data, change column data type, and select columns for time and coordinates
     package_for_df = 'spark'    
