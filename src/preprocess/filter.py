@@ -242,6 +242,11 @@ def infer_indiv_stoppoint(df_of_indiv, id_indiv):
     traj_all =  np.array(df_of_indiv.select('latitude','longitude','time').collect())
     time_all = traj_all[:, 2]
     coord_all = traj_all[:, :2]
+    
+    # why the some values in the time array are the same? Precision is not high enough?
+    time_all, uniq_indices = np.unique(time_all, return_index=True)
+    traj_all =  traj_all[uniq_indices, :]
+    coord_all = coord_all[uniq_indices, :]
         
     # define model
     # max distance between time-consecutive points to label them as stationary, and max distance between stationary points to form an edge.
@@ -295,6 +300,9 @@ def infer_indiv_stoppoint(df_of_indiv, id_indiv):
             df_at_stop = df_at_stop.withColumn(col_names_subset[i], df_at_stop[col_names_subset[i]].cast(schema_new[i]))
     
     else:
+        if is_stop_found:
+            print('\n ===== The # of stops for this individual is <=1 ')
+            
         # create empty pyspark df
         df_at_stop = create_empty_spark_df()
  
@@ -311,9 +319,9 @@ def loop_over_indiv(id_indiv, i):
     
     df_of_indiv = retrieve_data_indiv(id_indiv, i)
     
-    df = infer_indiv_stoppoint(df_of_indiv, id_indiv)
+    df_at_stop = infer_indiv_stoppoint(df_of_indiv, id_indiv)
       
-    return df
+    return df_at_stop
 
 
 def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=False):
@@ -341,7 +349,7 @@ def process_traj_indiv(df, days_need_min=1, package_for_df='spark', is_save=Fals
           
     n_indiv_temp = 50
     
-    # i = 1
+    # i = 20
     # id_indiv = id_uniq[i]  
     # n_divide = 10
     
