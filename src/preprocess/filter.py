@@ -2,12 +2,8 @@
 """
 @author: Jinzhu Yu
 """
-
-#import pandas as pd
-#import dask
-#import dask.dataframe as dd
+###
 import numpy as np
-#
 import pandas as pd
 from datetime import datetime
 from functools import reduce
@@ -15,7 +11,6 @@ import os
 from pathlib import Path
 
 import infostop
-
 import utils
 
 # import and set up pyspark configuration
@@ -24,9 +19,8 @@ findspark.init()
 
 # from pyspark.sql import SparkSession
 from pyspark.sql import*
-from pyspark.sql import DataFrame
 from pyspark.sql.types import*
-from pyspark.sql.functions import col, length, lit
+from pyspark.sql.functions import col, length  #, lit
 
 # #set an application name 
 # #start spark cluster; if already started then get it else create it 
@@ -186,7 +180,7 @@ def save_df_indiv(df, id_indiv):
 
 def retrieve_data_indiv(id_indiv, i, days_need_min=30, is_save=False):
      
-    df_of_indiv = df.filter(df.id_str == id_indiv)  #.collect()
+    df_of_indiv = df.filter(df.id_str == id_indiv)
     
     # only keep the df for individual with data for every single day in at least 30 days
     # retrieve time data and convert to datetime
@@ -340,7 +334,6 @@ def process_traj_indiv(df, days_need_min=30, package_for_df='spark', is_save=Fal
     '''
     
     # TODO: finding unique IDs is very slow. Need to improve the speed.
-    # id_unique = [i for i in df.select('id_str').distinct().collect()]
      
     id_uniq = [x.id_str for x in df.select('id_str').distinct().collect()]   
               
@@ -386,6 +379,7 @@ def main(is_save=False, package_for_df='spark'):
     location = 'Albany'
     date = '20200207'
     
+    # TODO: change the functions that use days_need_min
     days_need_min = 30
 
     # load data, change column data type, and select columns for time and coordinates
@@ -396,7 +390,7 @@ def main(is_save=False, package_for_df='spark'):
     df = select_col(df)
     df = remove_error_entry(df)
     
-    df_stoppint_merged = process_traj_indiv(df)
+    df_stoppint_merged = process_traj_indiv(df, days_need_min)
     
     df_stoppint_merged.show()
     
