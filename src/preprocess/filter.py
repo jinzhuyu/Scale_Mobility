@@ -13,9 +13,11 @@ from pathlib import Path
 import infostop
 import utils
 
-# import and set up pyspark configuration
-import findspark
-findspark.init()
+# # import and set up pyspark configuration
+# import findspark
+# findspark.init()
+
+# os.environ["SPARK_HOME"] = "/home/spark-1.6.0"
 
 # from pyspark.sql import SparkSession
 from pyspark.sql import*
@@ -35,12 +37,11 @@ sqlContext = SQLContext(sparkContext=sc.sparkContext, sparkSession=sc)
 # traj_data = TrajData()
 # traj_data.main()
     
-def load_data(path_data='../data', location='Albany', date='20200207', package_for_df='spark'):
+def load_data(path_data='../data', location='Albany', date='20200207'):
     '''import the raw data.
     
     parameters
         path_data - relative path of the data relative to this script in 'src', e.g., path_data = '../data'
-        package - the package used for loading the csv.gz file, including spark and dd (dask)
     '''
         
     #load raw data
@@ -48,11 +49,7 @@ def load_data(path_data='../data', location='Albany', date='20200207', package_f
     # path_datafile = os.path.join(os.getcwd(), '{}/{}00.csv.gz'.format(location, date))
     path_datafile = os.path.join(os.getcwd(), '{}/*.csv.gz'.format(location)) #load all csv.gz files at once
     
-    # select the package used to load data, spark, pd (pandas), or dd (dask)
-    if package_for_df == 'spark':
-        df = sqlContext.read.csv(path_datafile, header=False)
-    else:
-        df = dd.read_csv(path_datafile, compression='gzip', error_bad_lines=False)
+    df = sqlContext.read.csv(path_datafile, header=False)
 
     #change back to the default trajectory
     os.chdir('../src')
@@ -61,7 +58,7 @@ def load_data(path_data='../data', location='Albany', date='20200207', package_f
 
 # df_of_indiv = sqlContext.read.csv('/home/jayz/Documents/GitHub/Scale_Mobility/data/data_indiv/indiv_1.csv', header=True)
 
-def rename_col(df, package_for_df='spark'):
+def rename_col(df):
     '''rename the columns. The columns in the resultant df from loading data with spark are all of string type.
        note: 'time' and 'time_original' are in unix timestamp format (integer value)
        ## change column type
@@ -74,23 +71,16 @@ def rename_col(df, package_for_df='spark'):
     # rename the columns
     col_names_old = df.columns
     col_names_new = ['time_original','id_str','device_type','latitude','longitude','accuracy','timezone','class','transform','time']
-    if package_for_df == 'spark':
-        for i in range(len(col_names_old)):
-            df = df.withColumnRenamed(col_names_old[i], col_names_new[i])
-    else:
-        df = df.rename(columns=dict(zip(col_names_old, col_names_new)))
+
+    for i in range(len(col_names_old)):
+        df = df.withColumnRenamed(col_names_old[i], col_names_new[i])
+
         
     # change column type
-    if package_for_df == 'spark':
-        schema_new = [IntegerType(), StringType(), IntegerType(), FloatType(), FloatType(),
-                      FloatType(), IntegerType(), StringType(), StringType(), IntegerType()]
-        for i in range(len(col_names_new)):
-            df = df.withColumn(col_names_new[i], df[col_names_new[i]].cast(schema_new[i]))
-    else:
-        schema_new = [int, str, int, float, float, int, int, str, str, int]
-        for i in range(len(col_names_new)):
-            col = col_names_new
-            df[col] == df[col].astype(schema_new[i])
+    schema_new = [IntegerType(), StringType(), IntegerType(), FloatType(), FloatType(),
+                  FloatType(), IntegerType(), StringType(), StringType(), IntegerType()]
+    for i in range(len(col_names_new)):
+        df = df.withColumn(col_names_new[i], df[col_names_new[i]].cast(schema_new[i]))
               
     return df 
    
@@ -105,7 +95,7 @@ def select_col(df):
     return df_select
 
     
-def remove_error_entry(df, package_for_df='spark'):
+def remove_error_entry(df):
     
     '''remove entries with erreneous value of coordinates and 'id_str'.
        There can be errors in the latitude or longitude. E.g., the min of latitude is -14400
@@ -114,17 +104,11 @@ def remove_error_entry(df, package_for_df='spark'):
     lat_min, lat_max = -90, 90
     lon_min, lon_max = -180, 180
     id_str_len_min = 15
-    
-    if package_for_df == 'spark':
-        df = df.filter((df.latitude<=lat_max) & (df.latitude>=lat_min) &
-                       (df.longitude<=lon_max) & (df.longitude>=lon_min))
-    
-        df = df.filter(length(col('id_str')) > id_str_len_min)
-    else:
-        df = df[(df.latitude<=lat_max) & (df.latitude>=lat_min) &
-                (df.longitude<=lon_max) & (df.longitude>=lon_min)]
-        
-        df = df[df.id_str.str.len() > id_str_len_min]
+
+    df = df.filter((df.latitude<=lat_max) & (df.latitude>=lat_min) &
+                   (df.longitude<=lon_max) & (df.longitude>=lon_min))
+
+    df = df.filter(length(col('id_str')) > id_str_len_min)
     
     return df
     
@@ -307,7 +291,6 @@ def infer_indiv_stoppoint(df_of_indiv, id_indiv):
 def loop_over_indiv(id_indiv, i):
     
     interv_print = 100
-    
     if (i>=1) and (i%interv_print==0):
         print("\n ===== The index of individual in the loop is: {} =====".format(i))
     
@@ -318,9 +301,9 @@ def loop_over_indiv(id_indiv, i):
     return df_at_stop
 
 
-def process_traj_indiv(df, days_need_min=30, package_for_df='spark', is_save=False):
+def process_traj_indiv(df, days_need_min=30, is_save=False):
     '''
-    Get the coordinates and time for each individual from the df that include trajectory data for some time, e.g. 2 months.
+    Get the coordinates and time for each individual from the df that includes trajectory data for some time, e.g. 2 months.
 
     Parameters
     ----------
@@ -342,9 +325,7 @@ def process_traj_indiv(df, days_need_min=30, package_for_df='spark', is_save=Fal
     # stoppint_dfs_list = list(map(loop_over_indiv,
     #                              id_uniq, list( range(len(id_uniq)) )))
  
- 
-    # n_divide = 10
-    # try with 1000 individuals first
+    # try 500 individuals first
     n_indiv_temp = 500     
     stoppint_dfs_list = list(map(loop_over_indiv,
                                  id_uniq[:n_indiv_temp],
@@ -363,17 +344,14 @@ def process_traj_indiv(df, days_need_min=30, package_for_df='spark', is_save=Fal
 
 
 # def run_data_process()    
-def main(is_save=False, package_for_df='spark'):
+def main(is_save=False):
     
     # set the absolute path when run within python IDE
     # os.chdir("C:/Users/Administrator/OneDrive/GitHub/Scale_Mobility/src")
     # os.chdir("C:/Users/Jinzh/OneDrive/GitHub/Scale_Mobility/src")
-    # os.chdir("/home/jayz/Documents/GitHub/Scale_Mobility/src")
-    # os.chdir("/mnt/c/Users/Jinzh/OneDrive/GitHub/Scale_Mobility/src")
+    # os.chdir("/mnt/c/Users/Jinzh/OneDrive/GitHub/Scale_Mobility/src")   
     
-    
-    # TODO:
-   # move the setup of pyspark here within the main function after finalizing the previous functions
+    # TODO: move the setup of pyspark here within the main function after finalizing the previous functions
      
     path_data = '../data'
     location = 'Albany'
@@ -382,9 +360,8 @@ def main(is_save=False, package_for_df='spark'):
     # TODO: change the functions that use days_need_min
     days_need_min = 30
 
-    # load data, change column data type, and select columns for time and coordinates
-    package_for_df = 'spark'    
-    df = load_data(path_data, location, date, package_for_df)
+    # load data, change column data type, and select columns for time and coordinates    
+    df = load_data(path_data, location, date)
 
     df = rename_col(df)
     df = select_col(df)
