@@ -4,88 +4,85 @@ Created on Wed Aug  4 10:37:43 2021
 
 @author: kdd-lab/2019_Cornacchia
 
-source: https://github.com/kdd-lab/2019_Cornacchia/blob/31c38476c825f4991af8b5caf83e476e7f46d776/src/GeoSim.py#L219
-"""
-
-
-'''
 Implementation of the GeoSim model for human mobility
 
-'''
+source: https://github.com/kdd-lab/2019_Cornacchia/blob/31c38476c825f4991af8b5caf83e476e7f46d776/src/GeoSim.py#L219
+        https://github.com/jamesonthecrow/geosim/blob/master/geosim.py
+"""
 # ref.: # GeoSim - Coupling human mobility and social ties
         # Modelling the scaling properties of human mobility
 
 
-
-import pandas
-import numpy
+import numpy as np
+import pandas as pd
 import scipy
 import datetime
-import geopandas
-from tqdm import tqdm
-from igraph import *
-from math import sqrt, sin, cos, pi, asin, pow, ceil
 
-import powerlaw
-import skmob
+from tqdm import tqdm  # show progress bar
+from math import sqrt, sin, cos, pi, asin  #, pow, ceil # faster than their numpy counterparts
 
-# TODO: remove **social_graph** or use **social_graph='random'** since we don't have the call detail record (CDR) data among users to construct the social net
+# import geopandas  # conda install -c conda-forge geopandas
+from igraph import Graph  # conda install -c conda-forge python-igraph/pip install python-igraph; run as adminstrator
+import powerlaw  # https://github.com/jeffalstott/powerlaw
+    # pip install powerlaw; Install the dependency mpmath using conda as well
+# import skmob
+
 # TODO: 1. add travel time between locations
 # TODO: 2. consider the interplay between travel time, location, and waiting time
+# TODO: 3. might need to get rid of code for modeling social impact on location choice to improve code runtime
 
 
 ''' example of usage
 
     import GeoSim as gs
-    import pandas
     import pickle
     
-    #load the weighted spatial tessellation
+    ##load the weighted spatial tessellation
     
-    tex = pickle.load(open(data_folder+'tessellation_nyc_250m.pickle','rb'))  # used in geosim.generate
+    ## tex = pickle.load(open(data_folder+'tessellation_nyc_250m.pickle','rb'))  # used in geosim.generate; changed to None
     ## if spatial tessellation turns out to be a must, one can generate it for each county using the following code
         # ref.: https://github.com/scikit-mobility/scikit-mobility
-        # import skmob
-        import geopandas as gpd
-        # load a spatial tessellation
-        url_tess = skmob.utils.constants.NY_COUNTIES_2011
-        tessellation = gpd.read_file(url_tess).rename(columns={'tile_id': 'tile_ID'})
-        # print a portion of the spatial tessellation
-        print(tessellation.head())
+        # # import skmob
+        # import geopandas as gpd
+        # # load a spatial tessellation
+        # url_tess = skmob.utils.constants.NY_COUNTIES_2011
+        # tessellation = gpd.read_file(url_tess).rename(columns={'tile_id': 'tile_ID'})
+        # # print a portion of the spatial tessellation
+        # print(tessellation.head())
 
 
 
 
     #instantiate a GeoSim object using the default parameters for the empirical distributions
     
-    geosim = gs.GeoSim()
+    geosim = GeoSim()  # gs.GeoSim()
 
 
 
     #setting the period of the simulation
     
-    start = pandas.to_datetime('2020/01/10 00:00:00')
-    end = pandas.to_datetime('2020/02/10 00:00:00')
+    start = pd.to_datetime('2020/01/10 00:00:00')
+    end = pd.to_datetime('2020/01/16 00:00:00')
 
 
 
     # generate the synthetic trajectories.
-        To execute the GeoSim base model the parameters distance and gravity must be False
-        Use the Relevance-based starting location (RSL)
-        note that n_agents can be omitted since it is computed from the social graph as the number of nodes
+        #To execute the GeoSim base model the parameters distance and gravity must be False
+        #Use the Relevance-based starting location (RSL)
+        #note that n_agents can be omitted since it is computed from the social graph as the number of nodes
 
-    synthetic_trajectories = geosim.generate(start_date=start, end_date=end, spatial_tessellation=tex,
-                                             rsl=True, relevance_column='relevance', social_graph='random',
+    synthetic_trajectories = geosim.generate(start_date=start, end_date=end, spatial_tessellation=None, n_agents=200,
+                                             rsl=False, relevance_column='relevance', social_graph='random',
                                              distance=False, gravity=False, show_progress = True, random_state=735503)
 
     synthetic_trajectories.head()
+    # the generated locations without real spatial_tessellation are abstract locations represented by numbers
     
-    
-    
-    # TODO: set spatial_tessellation=None
-    
+    ## Set social_graph='random' since we don't have the call detail record (CDR) data among users to construct the social net    
     
 ''' 
+ 
+
 
 class GeoSim():
     
@@ -160,14 +157,14 @@ class GeoSim():
 
                 contact_sim.append(self.social_graph.es(eid)['mobility_similarity'][0])
 
-        contact_sim = numpy.array(contact_sim)
+        contact_sim = np.array(contact_sim)
 
         if len(contact_sim)!=0 :
-            if numpy.sum(contact_sim)!=0:
+            if np.sum(contact_sim)!=0:
                 contact_pick = self.random_weighted_choice(contact_sim)
                 
             else:
-                contact_pick = numpy.random.randint(0, len(contact_sim))
+                contact_pick = np.random.randint(0, len(contact_sim))
 
             contact = [i for i in self.social_graph.neighbors(agent)][contact_pick]
 
@@ -184,9 +181,9 @@ class GeoSim():
         # location_vector_agent[i] == 0, from the moment that i need a new and unvisited location
 
         if mode == 'exp':
-            id_locs_feasible = numpy.where(location_vector_agent==0)[0]
+            id_locs_feasible = np.where(location_vector_agent==0)[0]
         if mode == 'ret':
-            id_locs_feasible = numpy.where(location_vector_agent>=1)[0]
+            id_locs_feasible = np.where(location_vector_agent>=1)[0]
         
         if self.mobility_diary:       
             id_locs_constrain_diary = self.agents[agent]['constrains_mobility_diary']+[self.agents[agent]['home_location']]
@@ -204,9 +201,9 @@ class GeoSim():
                 src = self.agents[agent]['current_location']
                 #getting the row in the distance_matrix relative at the location 'src'
                 self.compute_od_row(src)
-                distance_row = numpy.array((self.distance_matrix[src].todense())[0])[0]
+                distance_row = np.array((self.distance_matrix[src].todense())[0])[0]
                 max_distance = self.agents[agent]['dt'] * self.max_speed_km_h
-                id_locs_reachable = numpy.where(distance_row<=max_distance)[0]
+                id_locs_reachable = np.where(distance_row<=max_distance)[0]
                 # compute the indicies of the location feasible & reachable
                 id_locs_valid = self.intersect_lists(id_locs_feasible, id_locs_reachable)
             else:
@@ -222,7 +219,7 @@ class GeoSim():
         v_location_proj = [location_vector_contact[i] for i in id_locs_valid]
 
 
-        if numpy.sum(v_location_proj) != 0:
+        if np.sum(v_location_proj) != 0:
             ##wighted choice
             idx = self.random_weighted_choice(v_location_proj)
             location_id = id_locs_valid[idx]
@@ -246,7 +243,7 @@ class GeoSim():
         v_location = self.agents[agent]['location_vector']
         
         # compute the indices of all the feasible locations for the agent A (the visited ones)
-        id_locs_feasible = numpy.where(v_location>=1)[0]
+        id_locs_feasible = np.where(v_location>=1)[0]
 
         if self.mobility_diary:            
             id_locs_constrain_diary = self.agents[agent]['constrains_mobility_diary']+[self.agents[agent]['home_location']]
@@ -264,9 +261,9 @@ class GeoSim():
                 #getting the row in the distance_matrix relative at the location 'src'
                 self.compute_od_row(src)
                 #distance_row = self.distance_matrix[src]
-                distance_row = numpy.array((self.distance_matrix[src].todense())[0])[0]
+                distance_row = np.array((self.distance_matrix[src].todense())[0])[0]
                 max_distance = self.agents[agent]['dt'] * self.max_speed_km_h
-                id_locs_reachable = numpy.where(distance_row<=max_distance)[0]
+                id_locs_reachable = np.where(distance_row<=max_distance)[0]
                 # compute the indicies of the location feasible & reachable
                 id_locs_valid = self.intersect_lists(id_locs_feasible, id_locs_reachable)
             else:
@@ -288,6 +285,14 @@ class GeoSim():
         
         return location_id
     
+
+
+
+##############################################
+# how is the location of next visit determined?
+
+
+
           
     def make_exploration_solo_choice(self, agent):
         '''
@@ -304,7 +309,7 @@ class GeoSim():
         v_location = self.agents[agent]['location_vector']   
         
         # compute the indices of all the feasible locations for the agent A (the unvisited ones)
-        id_locs_feasible = numpy.where(v_location==0)[0]
+        id_locs_feasible = np.where(v_location==0)[0]
         
         if self.mobility_diary:            
             id_locs_constrain_diary = self.agents[agent]['constrains_mobility_diary']+[self.agents[agent]['home_location']]
@@ -319,17 +324,17 @@ class GeoSim():
         
         # geosim base (uniformally at random)
         if not self.distance:
-            return id_locs_feasible[numpy.random.randint(0, len(id_locs_feasible))]
+            return id_locs_feasible[np.random.randint(0, len(id_locs_feasible))]
             
         if self.distance:
             
             src = self.agents[agent]['current_location']
             self.compute_od_row(src)
-            distance_row = numpy.array((self.distance_matrix[src].todense())[0])[0]
+            distance_row = np.array((self.distance_matrix[src].todense())[0])[0]
                    
             if self.max_speed_km_h is not None:
                 max_distance = self.agents[agent]['dt'] * self.max_speed_km_h
-                id_locs_reachable = numpy.where(distance_row<=max_distance)[0]
+                id_locs_reachable = np.where(distance_row<=max_distance)[0]
                 # compute the indicies of the location feasible & reachable
                 id_locs_valid = self.intersect_lists(id_locs_feasible, id_locs_reachable)
             else:
@@ -345,16 +350,16 @@ class GeoSim():
                 #compute (r_i * r_j)/ d_ij^2                
                 relevance_src = self.relevances[src]
 
-                distance_row_score = numpy.array(1/distance_row**2)
+                distance_row_score = np.array(1/distance_row**2)
                 
                 distance_row_score = distance_row_score * self.relevances * relevance_src
             else:
                 #compute 1/d
-                distance_row_score = numpy.array(1/distance_row)
+                distance_row_score = np.array(1/distance_row)
                
             distance_row[src]=0
                         
-            v_location_proj = numpy.array([distance_row_score[i] for i in id_locs_valid])
+            v_location_proj = np.array([distance_row_score[i] for i in id_locs_valid])
             
             #weighted choice
             idx = self.random_weighted_choice(v_location_proj)
@@ -365,9 +370,9 @@ class GeoSim():
     
     def random_weighted_choice(self, weights):
         
-        probabilities = weights/numpy.sum(weights)
-        t =  numpy.random.multinomial(1, probabilities)
-        pos_choice = numpy.where(t==1)[0][0]
+        probabilities = weights/np.sum(weights)
+        t =  np.random.multinomial(1, probabilities)
+        pos_choice = np.where(t==1)[0][0]
         
         return pos_choice
 
@@ -381,7 +386,7 @@ class GeoSim():
         if self.alpha >= 0:
             return self.alpha
         else:
-            n = numpy.random.normal(0.15,0.1)
+            n = np.random.normal(0.15,0.1)
             if n>=0:
                 return n
             else:
@@ -396,7 +401,7 @@ class GeoSim():
                 'ID':i,
                 'current_location':-1,
                 'home_location':-1,
-                'location_vector':numpy.array([0]*self.n_locations),
+                'location_vector':np.array([0]*self.n_locations),
                 'S':0,
                 'alpha':self.get_social_factor(),
                 'rho':self.rho,
@@ -430,12 +435,12 @@ class GeoSim():
                 user_ids.append(edge[1])
             
             user_ids = list(set(user_ids))
-            graph_ids = numpy.arange(0,len(user_ids))
+            graph_ids = np.arange(0,len(user_ids))
             
             #update the number of agents n_agents
             self.n_agents = len(user_ids)
             
-            self.map_uid_gid = pandas.DataFrame(columns=['user_id','graph_id'])
+            self.map_uid_gid = pd.DataFrame(columns=['user_id','graph_id'])
             
             self.map_uid_gid['user_id'] = user_ids
             self.map_uid_gid['graph_id'] = graph_ids
@@ -467,12 +472,12 @@ class GeoSim():
 
             if mode == 'uniform':                
                 #compute a random location
-                rand_location = numpy.random.randint(0, self.n_locations)
+                rand_location = np.random.randint(0, self.n_locations)
             if mode == 'relevance':
                 #random choice proportional to relevance
-                p_location = self.relevances / numpy.sum(self.relevances)
-                t = numpy.random.multinomial(1, p_location)
-                rand_location = numpy.where(t==1)[0][0]
+                p_location = self.relevances / np.sum(self.relevances)
+                t = np.random.multinomial(1, p_location)
+                rand_location = np.where(t==1)[0][0]
 
                          
             #update the location vector of the user
@@ -508,7 +513,7 @@ class GeoSim():
                 
     def compute_mobility_similarity(self):
         #compute the mobility similarity from every connected pair of agents
-        tot_edge = len(self.social_graph.es)
+        # tot_edge = len(self.social_graph.es)  # never used
         
         for edge in self.social_graph.es:
             lv1 = self.agents[edge.source]['location_vector']
@@ -519,15 +524,21 @@ class GeoSim():
                           
     def cosine_similarity(self,x,y):
         '''Cosine Similarity (x,y) = <x,y>/(||x||*||y||)'''
-        num = numpy.dot(x,y)
-        den = numpy.linalg.norm(x)*numpy.linalg.norm(y)
+        num = np.dot(x,y)
+        den = np.linalg.norm(x)*np.linalg.norm(y)
         return num/den
          
     
     def get_waiting_time(self):
         
+        ## float_time = powerlaw.Truncated_Power_Law(xmin=self.min_wait_time_hours,
+        ##                                           parameters=[1. + self.beta, 1.0 / self.tau]).generate_random()[0]
+        
+        ## round the seconds
         float_time = powerlaw.Truncated_Power_Law(xmin=self.min_wait_time_hours,
-                                            parameters=[1. + self.beta, 1.0 / self.tau]).generate_random()[0]
+                                                  parameters=[1. + self.beta, 1.0 / self.tau]).generate_random()[0]        
+        float_time = round(float_time * 3600, 0) / 3600
+        
         return float_time
                                                        
           
@@ -594,7 +605,7 @@ class GeoSim():
     
     def compute_distance_matrix(self):
         
-        self.distance_matrix = numpy.zeros((len(self.spatial_tessellation),len(self.spatial_tessellation)))
+        self.distance_matrix = np.zeros((len(self.spatial_tessellation),len(self.spatial_tessellation)))
         
         for i in range(0,len(self.spatial_tessellation)):
             for j in range(0,len(self.spatial_tessellation)):
@@ -632,7 +643,7 @@ class GeoSim():
     def intersect_lists(self, a, b):
         intersection = list(set(a)&set(b))
         intersection.sort()
-        intersection = numpy.array(intersection)
+        intersection = np.array(intersection)
         return intersection
      
         
@@ -725,7 +736,7 @@ class GeoSim():
                
     
         
-    def generate(self, start_date, end_date, social_graph='random', spatial_tessellation=None, n_agents=500, 
+    def generate(self, start_date, end_date, social_graph='random', spatial_tessellation=None, n_agents=200, 
                  n_locations=50, rsl=False, distance_matrix=None, relevance_column=None, distance = False,
                  gravity = False, random_state=None, log_file=None, show_progress=False,dt_update_mobSim = 24*7, 
                  indipendency_window = 0.5, min_relevance = 0.1, max_speed_km_h=None, degree_exp_social=False, diary_generator=None): 
@@ -792,10 +803,10 @@ class GeoSim():
                 if list(self.spatial_tessellation.columns).count(relevance_column) == 0:
                     raise ValueError("the relevance column is invalid")
                   
-                self.relevances = numpy.array(self.spatial_tessellation[relevance_column])
+                self.relevances = np.array(self.spatial_tessellation[relevance_column])
                             
                 #map relevance 0 in min_rel               
-                self.relevances = numpy.where(self.relevances == 0, min_relevance, self.relevances) 
+                self.relevances = np.where(self.relevances == 0, min_relevance, self.relevances) 
                 
             
             if self.distance:  # in the example usage, distance=False
@@ -807,9 +818,9 @@ class GeoSim():
         
         
         if random_state is not None:
-            numpy.random.seed(random_state)
-        # else:
-        #     print('===== Random state is not provided =====')
+            np.random.seed(random_state)
+        ## else:
+        ##     print('===== Random state is not provided =====')
         
         #initialization
         
@@ -901,10 +912,10 @@ class GeoSim():
                     p_exp = self.agents[agent]['rho'] * (self.agents[agent]['S'] ** -self.agents[agent]['gamma'])
 
                     #generate a random number for the choice: Explore or Return respectively with probability pS^-gamma and 1-pS^-gamma                
-                    p_rand_exp = numpy.random.rand()  
+                    p_rand_exp = np.random.rand()  
 
                     #generate a random number for the social or solo choice (alpha, 1-alpha)
-                    p_rand_soc = numpy.random.rand()
+                    p_rand_soc = np.random.rand()
 
                     #pendent action    
                     p_action = self.agents[agent]['force_move']['choice']
@@ -1013,7 +1024,16 @@ class GeoSim():
             pbar.close()
         
         self.update_agent_movement_window(self.end_date)
-        tdf = skmob.TrajDataFrame(self.trajectories, user_id=0, latitude=1, longitude=2, datetime=3)
-        tdf = tdf.sort_by_uid_and_datetime() 
         
-        return tdf
+        ## Avoid the use of skmob: https://scikit-mobility.github.io/scikit-mobility/reference/data_structures.html
+        # tdf = skmob.TrajDataFrame(self.trajectories, user_id=0, latitude=1, longitude=2, datetime=3)
+        # tdf = tdf.sort_by_uid_and_datetime()
+        
+        # convert list of tuples into pandas df
+        traj_df = pd.DataFrame(self.trajectories, columns=['user_id', 'latitude', 'longtitude', 'datetime'])
+        traj_df_sort = traj_df.sort_values(['user_id', 'datetime'])
+        
+        # round off to seconds; done when generating waiting time samples within the function: get_waiting_time
+        # traj_df_sort['datetime'] = traj_df_sort['datetime'].dt.round(freq='S')
+        
+        return traj_df_sort #tdf
