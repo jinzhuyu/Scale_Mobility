@@ -29,7 +29,63 @@ from math import sqrt, sin, cos, pi, asin, pow, ceil
 import powerlaw
 import skmob
 
+# TODO: remove **social_graph** or use **social_graph='random'** since we don't have the call detail record (CDR) data among users to construct the social net
+# TODO: 1. add travel time between locations
+# TODO: 2. consider the interplay between travel time, location, and waiting time
 
+
+''' example of usage
+
+    import GeoSim as gs
+    import pandas
+    import pickle
+    
+    #load the weighted spatial tessellation
+    
+    tex = pickle.load(open(data_folder+'tessellation_nyc_250m.pickle','rb'))  # used in geosim.generate
+    ## if spatial tessellation turns out to be a must, one can generate it for each county using the following code
+        # ref.: https://github.com/scikit-mobility/scikit-mobility
+        # import skmob
+        import geopandas as gpd
+        # load a spatial tessellation
+        url_tess = skmob.utils.constants.NY_COUNTIES_2011
+        tessellation = gpd.read_file(url_tess).rename(columns={'tile_id': 'tile_ID'})
+        # print a portion of the spatial tessellation
+        print(tessellation.head())
+
+
+
+
+    #instantiate a GeoSim object using the default parameters for the empirical distributions
+    
+    geosim = gs.GeoSim()
+
+
+
+    #setting the period of the simulation
+    
+    start = pandas.to_datetime('2020/01/10 00:00:00')
+    end = pandas.to_datetime('2020/02/10 00:00:00')
+
+
+
+    # generate the synthetic trajectories.
+        To execute the GeoSim base model the parameters distance and gravity must be False
+        Use the Relevance-based starting location (RSL)
+        note that n_agents can be omitted since it is computed from the social graph as the number of nodes
+
+    synthetic_trajectories = geosim.generate(start_date=start, end_date=end, spatial_tessellation=tex,
+                                             rsl=True, relevance_column='relevance', social_graph='random',
+                                             distance=False, gravity=False, show_progress = True, random_state=735503)
+
+    synthetic_trajectories.head()
+    
+    
+    
+    # TODO: set spatial_tessellation=None
+    
+    
+''' 
 
 class GeoSim():
     
@@ -40,6 +96,7 @@ class GeoSim():
 
         self.rho = rho      # explore or return
         self.gamma = gamma  # explore or return
+        
         self.alpha = alpha  # social influence probability. Changed from 0.2 to 0.001
 
         self.beta = beta  # parameter in the distribution for waiting time
@@ -674,11 +731,13 @@ class GeoSim():
                  indipendency_window = 0.5, min_relevance = 0.1, max_speed_km_h=None, degree_exp_social=False, diary_generator=None): 
         
         
+        
+        ### Jinzhu: rsl represent relevance-based starting location. rsl=True is used in the example usage, but False cannot used instead
+        
         if gravity and not distance:
             raise ValueError("distance must be True if gravity is True")
         
-        
- 
+         
         # init data structures and parameters   
         self.social_graph = None
         self.n_agents = n_agents
@@ -719,13 +778,16 @@ class GeoSim():
         
         if spatial_tessellation is not None:
             
+            ### Jinzhu: it seems like the following four values are not used in the rest of this function
             self.n_locations = len(spatial_tessellation)
             self.spatial_tessellation = spatial_tessellation
             self.abstract_space = False
             self.lats_lngs = self.spatial_tessellation.geometry.apply(skmob.utils.utils.get_geom_centroid, args=[True]).values
             
             
-            if self.gravity or self.starting_locations_mode == 'relevance':        
+            if self.gravity or self.starting_locations_mode == 'relevance':
+                
+                # can be nullify by setting rsl=False and gravity=False
                 
                 if list(self.spatial_tessellation.columns).count(relevance_column) == 0:
                     raise ValueError("the relevance column is invalid")
@@ -736,7 +798,7 @@ class GeoSim():
                 self.relevances = numpy.where(self.relevances == 0, min_relevance, self.relevances) 
                 
             
-            if self.distance:
+            if self.distance:  # in the example usage, distance=False
                 if distance_matrix is not None:
                     self.distance_matrix = distance_matrix
                     print("Pre-computed matrix")
@@ -746,7 +808,8 @@ class GeoSim():
         
         if random_state is not None:
             numpy.random.seed(random_state)
-
+        # else:
+        #     print('===== Random state is not provided =====')
         
         #initialization
         
@@ -952,4 +1015,5 @@ class GeoSim():
         self.update_agent_movement_window(self.end_date)
         tdf = skmob.TrajDataFrame(self.trajectories, user_id=0, latitude=1, longitude=2, datetime=3)
         tdf = tdf.sort_by_uid_and_datetime() 
+        
         return tdf
