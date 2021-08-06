@@ -91,7 +91,7 @@ class GeoSim():
         
         self.name = name
 
-        self.rho = rho      # explore or return
+        self.rho = rho      # explore an unvisited location with probability rho*S^gamma where S is the number of locations unvisited
         self.gamma = gamma  # explore or return
         
         self.alpha = alpha  # social influence probability. Changed from 0.2 to 0.001
@@ -122,6 +122,18 @@ class GeoSim():
         
     def gid_2_uid(self, gid):
         return self.map_uid_gid[self.map_uid_gid['graph_id']==gid].iloc[0]['user_id']
+    
+    
+    # what is the function of the following function?
+    def random_weighted_choice(self, weights):
+        
+        probabilities = weights/np.sum(weights)
+        t =  np.random.multinomial(1, probabilities)
+        pos_choice = np.where(t==1)[0][0]
+        
+        return pos_choice
+    
+    
         
     def make_social_choice(self, agent, mode):
         
@@ -252,8 +264,7 @@ class GeoSim():
             # have at least one visist, and so they are already filtered-out in the building of id_locs_feasible
             id_locs_feasible = [loc_id for loc_id in id_locs_feasible if loc_id not in id_locs_constrain_diary ]
 
-        
-        
+                
         
         if self.distance:
             if self.max_speed_km_h is not None:
@@ -288,12 +299,11 @@ class GeoSim():
 
 
 
-##############################################
-# how is the location of next visit determined?
-
-
-
-          
+    ##############################################
+    #??? how is the location of next visit determined?
+        # Each agent is allowed to move among the locations representing the towers from CDRs
+        # which are the same for all agents. The location vector of each agent is updated after each move.
+         
     def make_exploration_solo_choice(self, agent):
         '''
             The agent A selects uniformly at random an UNVISITED location if distance == False
@@ -365,16 +375,8 @@ class GeoSim():
             idx = self.random_weighted_choice(v_location_proj)
             location_id = id_locs_valid[idx]
             
-            return location_id
-            
+            return location_id           
     
-    def random_weighted_choice(self, weights):
-        
-        probabilities = weights/np.sum(weights)
-        t =  np.random.multinomial(1, probabilities)
-        pos_choice = np.where(t==1)[0][0]
-        
-        return pos_choice
 
         
     '''
@@ -402,7 +404,7 @@ class GeoSim():
                 'current_location':-1,
                 'home_location':-1,
                 'location_vector':np.array([0]*self.n_locations),
-                'S':0,
+                'S':0,  # number of unique locations visited thus far
                 'alpha':self.get_social_factor(),
                 'rho':self.rho,
                 'gamma':self.gamma,   
@@ -601,7 +603,17 @@ class GeoSim():
 
         for ind in toRemove:
             self.tmp_upd.pop(ind)
+
         
+    def distance_earth_km(self, src, dest):
+                
+        lat1, lat2 = src['lat']*pi/180, dest['lat']*pi/180
+        lon1, lon2 = src['lon']*pi/180, dest['lon']*pi/180
+        dlat, dlon = lat1-lat2, lon1-lon2
+
+        ds = 2 * asin(sqrt(sin(dlat/2.0) ** 2 + cos(lat1) * cos(lat2) * sin(dlon/2.0) ** 2))
+        return 6371.01 * ds
+
     
     def compute_distance_matrix(self):
         
@@ -628,16 +640,6 @@ class GeoSim():
                                              {'lat':self.lats_lngs[row][0],'lon':self.lats_lngs[row][1]})
                     self.distance_matrix[row,i] = d
 
-    
-             
-    def distance_earth_km(self, src, dest):
-                
-        lat1, lat2 = src['lat']*pi/180, dest['lat']*pi/180
-        lon1, lon2 = src['lon']*pi/180, dest['lon']*pi/180
-        dlat, dlon = lat1-lat2, lon1-lon2
-
-        ds = 2 * asin(sqrt(sin(dlat/2.0) ** 2 + cos(lat1) * cos(lat2) * sin(dlon/2.0) ** 2))
-        return 6371.01 * ds
     
     
     def intersect_lists(self, a, b):
@@ -753,7 +755,7 @@ class GeoSim():
         self.social_graph = None
         self.n_agents = n_agents
         self.agents = {}
-        self.tmp_upd = []
+        self.tmp_upd = []  #???
         self.distance = distance
         self.gravity = gravity
 
@@ -909,7 +911,7 @@ class GeoSim():
                     
                 if location_id is None:                 
                     #compute p_exp, the probability that the user will explore a new location           
-                    p_exp = self.agents[agent]['rho'] * (self.agents[agent]['S'] ** -self.agents[agent]['gamma'])
+                    p_exp = self.agents[agent]['rho'] * ( self.agents[agent]['S']**(-self.agents[agent]['gamma']) )
 
                     #generate a random number for the choice: Explore or Return respectively with probability pS^-gamma and 1-pS^-gamma                
                     p_rand_exp = np.random.rand()  
