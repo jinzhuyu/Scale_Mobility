@@ -37,7 +37,7 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
     import GeoSim as gs
     import pickle
     
-    ##load the weighted spatial tessellation
+    ##load the weighted spatial tessellation if the data are available
     
     ## tex = pickle.load(open(data_folder+'tessellation_nyc_250m.pickle','rb'))  # used in geosim.generate; changed to None
     ## if spatial tessellation turns out to be a must, one can generate it for each county using the following code
@@ -51,43 +51,56 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
         # print(tessellation.head())
 
 
-
-
-    #instantiate a GeoSim object using the default parameters for the empirical distributions
-    
-    geosim = GeoSim()  # gs.GeoSim()
-
-
+    # shared parameter values
+    n_agents = 100
+    random_state = 11235
 
     #setting the period of the simulation
     
     start = pd.to_datetime('2020/01/10 00:00:00')
-    end = pd.to_datetime('2020/01/16 00:00:00')
+    end = pd.to_datetime('2020/01/17 00:00:00')
 
-
+    #instantiate a GeoSim object using the default parameters for the empirical distributions   
+    geosim = GeoSim()  # gs.GeoSim()
 
     # generate the synthetic trajectories.
         #To execute the GeoSim base model the parameters distance and gravity must be False
         #Use the Relevance-based starting location (RSL)
         #note that n_agents can be omitted since it is computed from the social graph as the number of nodes
+        
+    synthetic_trajectories = geosim.generate(start_date=start, end_date=end, spatial_tessellation=None,
+                                             n_agents=n_agents, rsl=False, relevance_column='relevance', social_graph='random',
+                                             distance=False, gravity=False, show_progress = True, random_state=random_state)
 
-    synthetic_trajectories = geosim.generate(start_date=start, end_date=end, spatial_tessellation=None, n_agents=200,
-                                             rsl=False, relevance_column='relevance', social_graph='random',
-                                             distance=False, gravity=False, show_progress = True, random_state=735503)
 
+    # with travel time
+    geosim_with_travel_time = GeoSim(is_add_travel_time=True)
+    synthetic_trajectories_with_travel_time = geosim_with_travel_time.generate(start_date=start, end_date=end, spatial_tessellation=None,
+                                             n_agents=n_agents, rsl=False, relevance_column='relevance', social_graph='random',
+                                             distance=False, gravity=False, show_progress = True, random_state=random_state)
+    
     synthetic_trajectories.head()
     # the generated locations without real spatial_tessellation are abstract locations represented by numbers
     
     ## Set social_graph='random' since we don't have the call detail record (CDR) data among users to construct the social net    
     
+'''
 ''' 
- 
-
+TODO: 
+    How to speficy the value of parameters (min and cutoff) in the trucanted powerlaw distribution?
+    Determine the time interval between moves? Why was 1h used in previous models?
+    Find the joint distribution between travel time and waiting time
+        then sample travel time and waiting time simultaneously
+         
+'''
 
 class GeoSim():
     
     
-    def __init__(self, name='GeoSim', rho=0.6, gamma=0.21, alpha=0.001, beta=0.8, tau=17, min_wait_time_hours=0.25):
+    def __init__(self, name='GeoSim', rho=0.6, gamma=0.21, alpha=0.001,
+                 beta=0.8, tau=17, min_wait_time_hours=0.20,
+                 theta=0.55, tau_travel = 17, min_travel_time_hours=0.2,
+                 is_add_travel_time=False, cor_wait_and_travel=0.5):
         
         self.name = name
 
@@ -99,6 +112,13 @@ class GeoSim():
         self.beta = beta  # parameter in the distribution for waiting time
         self.tau = tau  # cutoff value of waiting time
         self.min_wait_time_hours = min_wait_time_hours  #changed from 1h to 15 mins (0.25 h)
+        
+        self.theta = theta  # distri. of displacement at hourly intervals P(delat_r) ~ |delta_r|^(-1-theta)
+        self.tau_travel = tau_travel  # cutoff value of travel time
+        self.min_travel_time_hours = min_travel_time_hours  #10 mins/0.167hours
+        
+        self.is_add_travel_time = is_add_travel_time
+        self.cor_wait_and_travel = cor_wait_and_travel
 
         self.abstract_space = True
         self.agents = {}
@@ -137,8 +157,7 @@ class GeoSim():
         
     def make_social_choice(self, agent, mode):
         
-        ''' 
-        
+        '''        
         The agent A makes a social choice in this way:
         1. select a contact C with probability proportional to the mobility similarity between A and C.
         2. filter the locations of C to make them feasible according to the mode (exp or ret) of A.
@@ -204,7 +223,6 @@ class GeoSim():
         #no choice left for the agent in the current mode
         if len(id_locs_feasible) == 0:
             return -1
-
 
         # distance constrain
         if self.distance:
@@ -300,9 +318,10 @@ class GeoSim():
 
 
     ##############################################
-    #??? how is the location of next visit determined?
-        # Each agent is allowed to move among the locations representing the towers from CDRs
+    # how is the location of next visit determined using the call detail record?
+        # Each agent is allowed to move among the locations (state space) representing the towers from CDRs
         # which are the same for all agents. The location vector of each agent is updated after each move.
+        # No moibility data of agents except the tower locations are exploited in the model
          
     def make_exploration_solo_choice(self, agent):
         '''
@@ -537,11 +556,11 @@ class GeoSim():
         ##                                           parameters=[1. + self.beta, 1.0 / self.tau]).generate_random()[0]
         
         ## round the seconds
-        float_time = powerlaw.Truncated_Power_Law(xmin=self.min_wait_time_hours,
-                                                  parameters=[1. + self.beta, 1.0 / self.tau]).generate_random()[0]        
-        float_time = round(float_time * 3600, 0) / 3600
+        waiting_time = powerlaw.Truncated_Power_Law(xmin=self.min_wait_time_hours,
+                                                    parameters=[1. + self.beta, 1.0 / self.tau]).generate_random()[0]        
+        waiting_time = round(waiting_time * 3600, 0) / 3600
         
-        return float_time
+        return waiting_time
                                                        
           
     def get_greater_wt(self, agent, max_tries, add_h):
@@ -557,7 +576,31 @@ class GeoSim():
             dt = self.agents[agent]['dt']+add_h
             
         return dt
-            
+    
+
+    def get_travel_time(self):
+        '''
+        Sample a travel time between two locations
+
+        Returns
+        -------
+        travel_time : float, unit hours
+
+        '''
+        ## round the seconds
+        travel_time = powerlaw.Truncated_Power_Law(xmin=self.min_travel_time_hours,
+                                                   parameters=[1. + self.theta, 1.0 / self.tau_travel]).generate_random()[0]
+        
+        travel_time = round(travel_time * 3600, 0) / 3600
+
+        return travel_time
+
+    # # assume the travel time and waiting time jointly follow a bivariate Pareto distribution for now
+    # # sample from bivariate Pareto distribution
+    #     #ref: https://stackoverflow.com/questions/48420952/simulating-bivariate-pareto-distribution
+    # def get_travel_and_waiting_time(self):
+        
+    
             
     def store_tmp_movement(self, t, agent, loc, dT):
                                                         
@@ -685,7 +728,15 @@ class GeoSim():
                     dT = 1
 
             else:
-                dT = self.get_waiting_time()
+                if self.is_add_travel_time == False:
+                    dT = self.get_waiting_time()
+                else: 
+                    waiting_time = self.get_waiting_time()
+                    # cor_wait_and_travel = 0.3  # assume a value for now
+                    travel_time = self.cor_wait_and_travel*waiting_time + (1-self.cor_wait_and_travel)*self.get_travel_time()
+                    travel_time = round(travel_time * 3600, 0) / 3600
+                    dT = waiting_time + travel_time
+                                
                 self.agents[agent]['time_next_move']= self.current_date + datetime.timedelta(hours=dT)
                 
             self.agents[agent]['dt'] = dT    
@@ -745,7 +796,7 @@ class GeoSim():
         
         
         
-        ### Jinzhu: rsl represent relevance-based starting location. rsl=True is used in the example usage, but False cannot used instead
+        ### rsl represent relevance-based starting location. rsl=True is used in the example usage, but False cannot used instead
         
         if gravity and not distance:
             raise ValueError("distance must be True if gravity is True")
