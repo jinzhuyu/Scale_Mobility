@@ -53,6 +53,7 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
 
     # shared parameter values
     n_agents = 100
+    n_locations = 100
     random_state = 11235
 
     #setting the period of the simulation
@@ -68,18 +69,18 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
         #Use the Relevance-based starting location (RSL)
         #note that n_agents can be omitted since it is computed from the social graph as the number of nodes
         
-    synthetic_trajectories = geosim.generate(start_date=start, end_date=end, spatial_tessellation=None,
-                                             n_agents=n_agents, rsl=False, relevance_column='relevance', social_graph='random',
+    synthetic_trajectories = geosim.generate(start_date=start, end_date=end, spatial_tessellation=None, n_agents=n_agents,
+                                             n_locations=n_locations, rsl=False, relevance_column='relevance', social_graph='random',
                                              distance=False, gravity=False, show_progress = True, random_state=random_state)
 
 
-    # with travel time
-    geosim_with_travel_time = GeoSim(is_add_travel_time=True)
+    # with travel time and sleep time
+    geosim_with_travel_time = GeoSim(is_add_travel_time=True, is_add_sleep_time=True)
     synthetic_trajectories_with_travel_time = geosim_with_travel_time.generate(start_date=start, end_date=end, spatial_tessellation=None,
-                                             n_agents=n_agents, rsl=False, relevance_column='relevance', social_graph='random',
-                                             distance=False, gravity=False, show_progress = True, random_state=random_state)
+                                             n_agents=n_agents, n_locations=n_locations, rsl=False, relevance_column='relevance',
+                                             social_graph='random', distance=False, gravity=False, show_progress = True, random_state=random_state)
     
-    synthetic_trajectories.head()
+    # synthetic_trajectories.head()
     # the generated locations without real spatial_tessellation are abstract locations represented by numbers
     
     ## Set social_graph='random' since we don't have the call detail record (CDR) data among users to construct the social net    
@@ -100,7 +101,8 @@ class GeoSim():
     def __init__(self, name='GeoSim', rho=0.6, gamma=0.21, alpha=0.001,
                  beta=0.8, tau=17, min_wait_time_hours=0.20,
                  theta=0.55, tau_travel = 17, min_travel_time_hours=0.2,
-                 is_add_travel_time=False, cor_wait_and_travel=0.5):
+                 is_add_travel_time=False, cor_wait_and_travel=0.5,
+                 is_add_sleep_time=False):
         
         self.name = name
 
@@ -109,7 +111,7 @@ class GeoSim():
         
         self.alpha = alpha  # social influence probability. Changed from 0.2 to 0.001
 
-        self.beta = beta  # parameter in the distribution for waiting time
+        self.beta = beta  # parameter in the distribution for waiting time. First proposed in Song et al using only CDR of 1000 users
         self.tau = tau  # cutoff value of waiting time
         self.min_wait_time_hours = min_wait_time_hours  #changed from 1h to 15 mins (0.25 h)
         
@@ -119,6 +121,8 @@ class GeoSim():
         
         self.is_add_travel_time = is_add_travel_time
         self.cor_wait_and_travel = cor_wait_and_travel
+        
+        self.is_add_sleep_time = is_add_sleep_time
 
         self.abstract_space = True
         self.agents = {}
@@ -558,7 +562,7 @@ class GeoSim():
         ## round the seconds
         waiting_time = powerlaw.Truncated_Power_Law(xmin=self.min_wait_time_hours,
                                                     parameters=[1. + self.beta, 1.0 / self.tau]).generate_random()[0]        
-        waiting_time = round(waiting_time * 3600, 0) / 3600
+        # waiting_time = round(waiting_time * 3600, 0) / 3600
         
         return waiting_time
                                                        
@@ -591,7 +595,7 @@ class GeoSim():
         travel_time = powerlaw.Truncated_Power_Law(xmin=self.min_travel_time_hours,
                                                    parameters=[1. + self.theta, 1.0 / self.tau_travel]).generate_random()[0]
         
-        travel_time = round(travel_time * 3600, 0) / 3600
+        # travel_time = round(travel_time * 3600, 0) / 3600
 
         return travel_time
 
@@ -727,16 +731,28 @@ class GeoSim():
                     self.agents[agent]['time_next_move'] = self.end_date + datetime.timedelta(hours=1)
                     dT = 1
 
-            else:
+            else:  # add travel time and/or sleep time
                 if self.is_add_travel_time == False:
                     dT = self.get_waiting_time()
                 else: 
                     waiting_time = self.get_waiting_time()
                     # cor_wait_and_travel = 0.3  # assume a value for now
                     travel_time = self.cor_wait_and_travel*waiting_time + (1-self.cor_wait_and_travel)*self.get_travel_time()
-                    travel_time = round(travel_time * 3600, 0) / 3600
+                    # travel_time = round(travel_time * 3600, 0) / 3600
                     dT = waiting_time + travel_time
                                 
+                if self.is_add_sleep_time == True:  # the agent will sleep / stop moving
+                    
+                    bed_time = np.random.normal(loc=23, scale=1)  # ref: https://www.sleepeval.com/norms/epidemiologicalData.html
+                    latest_bedtime = 4  # 4 am
+                    
+                    current_time_datetime = self.current_date
+                    current_time_numberic = current_time_datetime.hour + current_time_datetime.minute/60 + current_time_datetime.second/3600
+                    
+                    if (current_time_numberic >= bed_time)  or (current_time_numberic <= latest_bedtime):
+                        sleep_duration = np.random.normal(loc=7, scale=1)  # ref.: https://www.sleepeval.com/norms/epidemiologicalData.html
+                        dT = dT + sleep_duration  ## user sleeps for 
+
                 self.agents[agent]['time_next_move']= self.current_date + datetime.timedelta(hours=dT)
                 
             self.agents[agent]['dt'] = dT    
@@ -943,6 +959,8 @@ class GeoSim():
                 
                 location_id = None
                 
+                
+                ### TODO: what is this for???
                 #if the user is spending its visiting time do nothing 
                 if self.current_date != self.agents[agent]['time_next_move']:
                     if self.agents[agent]['time_next_move'] < min_time_next_move:
@@ -1087,6 +1105,6 @@ class GeoSim():
         traj_df_sort = traj_df.sort_values(['user_id', 'datetime'])
         
         # round off to seconds; done when generating waiting time samples within the function: get_waiting_time
-        # traj_df_sort['datetime'] = traj_df_sort['datetime'].dt.round(freq='S')
+        traj_df_sort['datetime'] = traj_df_sort['datetime'].dt.round(freq='S')
         
         return traj_df_sort #tdf
