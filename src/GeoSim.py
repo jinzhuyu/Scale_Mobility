@@ -58,8 +58,8 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
 
 
     # shared parameter values
-    n_agents = 500
-    n_locations = 500
+    n_agents = 200
+    n_locations = 1000
     random_state = 11235
 
     #setting the period of the simulation
