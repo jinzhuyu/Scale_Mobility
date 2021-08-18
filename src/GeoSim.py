@@ -27,10 +27,16 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
     # pip install powerlaw; Install the dependency mpmath using conda as well
 # import skmob
 
-# TODO: 1. add travel time between locations
 # TODO: 2. consider the interplay between travel time, location, and waiting time
 # TODO: 3. might need to get rid of code for modeling social impact on location choice to improve code runtime
 
+
+# TODO: Impact of temporal granuality min_wait_time # Determine the time interval between moves?
+        # 1h interval was used because the locations are measured hourly in the data they used
+# TODO: Find the joint distribution between travel time and waiting time
+        # then sample travel time and waiting time simultaneously
+
+# TODO: the stationary distribution
 
 ''' example of usage
 
@@ -52,53 +58,50 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
 
 
     # shared parameter values
-    n_agents = 100
-    n_locations = 100
+    n_agents = 500
+    n_locations = 500
     random_state = 11235
 
     #setting the period of the simulation
     
     start = pd.to_datetime('2020/01/10 00:00:00')
-    end = pd.to_datetime('2020/01/17 00:00:00')
+    end = pd.to_datetime('2020/04/11 00:00:00')
 
     #instantiate a GeoSim object using the default parameters for the empirical distributions   
-    geosim = GeoSim()  # gs.GeoSim()
+    geosim_wo_travel_sleep = GeoSim()  # gs.GeoSim()
 
     # generate the synthetic trajectories.
         #To execute the GeoSim base model the parameters distance and gravity must be False
         #Use the Relevance-based starting location (RSL)
         #note that n_agents can be omitted since it is computed from the social graph as the number of nodes
         
-    synthetic_trajectories = geosim.generate(start_date=start, end_date=end, spatial_tessellation=None, n_agents=n_agents,
+    synthetic_traj_wo_travel_sleep = geosim_wo_travel_sleep.generate(start_date=start, end_date=end, spatial_tessellation=None, n_agents=n_agents,
                                              n_locations=n_locations, rsl=False, relevance_column='relevance', social_graph='random',
                                              distance=False, gravity=False, show_progress = True, random_state=random_state)
 
-
+    
+    synthetic_traj.to_csv('synthetic_trajectories.csv', index=False)
     # with travel time and sleep time
-    geosim_with_travel_time = GeoSim(is_add_travel_time=True, is_add_sleep_time=True)
-    synthetic_trajectories_with_travel_time = geosim_with_travel_time.generate(start_date=start, end_date=end, spatial_tessellation=None,
+    geosim_wt_travel_sleep = GeoSim(is_add_travel_time=True, is_add_sleep_time=True)
+    synthetic_traj_wt_travel_sleep = geosim_wt_travel_sleep.generate(start_date=start, end_date=end, spatial_tessellation=None,
                                              n_agents=n_agents, n_locations=n_locations, rsl=False, relevance_column='relevance',
                                              social_graph='random', distance=False, gravity=False, show_progress = True, random_state=random_state)
     
+    synthetic_trajectories_with_travel_time.to_csv('synthetic_trajectories_with_travel_time.csv', index=False)
     # synthetic_trajectories.head()
     # the generated locations without real spatial_tessellation are abstract locations represented by numbers
     
     ## Set social_graph='random' since we don't have the call detail record (CDR) data among users to construct the social net    
     
 '''
-''' 
-TODO: 
-    How to speficy the value of parameters (min and cutoff) in the trucanted powerlaw distribution?
-    Determine the time interval between moves? Why was 1h used in previous models?
-    Find the joint distribution between travel time and waiting time
-        then sample travel time and waiting time simultaneously
-         
-'''
+ 
+        
+
 
 class GeoSim():
     
     
-    def __init__(self, name='GeoSim', rho=0.6, gamma=0.21, alpha=0.001,
+    def __init__(self, name='GeoSim', rho=0.6, gamma=0.21, alpha=0.0001,
                  beta=0.8, tau=17, min_wait_time_hours=0.20,
                  theta=0.55, tau_travel = 17, min_travel_time_hours=0.2,
                  is_add_travel_time=False, cor_wait_and_travel=0.5,
@@ -513,6 +516,7 @@ class GeoSim():
             self.agents[i]['current_location'] = rand_location
             #set the home location
             self.agents[i]['home_location'] = rand_location
+
             
             #update timeNextMove
             if self.mobility_diary:               
@@ -529,11 +533,11 @@ class GeoSim():
                 i = self.gid_2_uid(i)
 
             if self.abstract_space:
-                self.trajectories.append((i, rand_location, rand_location, self.current_date))
+                self.trajectories.append((i, rand_location, rand_location, self.current_date, self.agents[i]['S']))
             else:
                 lat = self.lats_lngs[rand_location][0]
                 lng = self.lats_lngs[rand_location][1]
-                self.trajectories.append((i, lat, lng, self.current_date))
+                self.trajectories.append((i, lat, lng, self.current_date, self.agents[i]['S']))
 
                 
     def compute_mobility_similarity(self):
@@ -618,29 +622,30 @@ class GeoSim():
         toRemove=[]
         i=0
 
-        for el in self.tmp_upd:
+        for traj_entry in self.tmp_upd:
 
-            if el['timestamp'] <= to:
+            if traj_entry['timestamp'] <= to:
 
-                agent=int(el['agent'])
+                agent=int(traj_entry['agent'])
 
-                if self.agents[agent]['location_vector'][el['location']] == 0:
-                    self.agents[agent]['S']+=1
+                if self.agents[agent]['location_vector'][traj_entry['location']] == 0:
+                    self.agents[agent]['S'] += 1
 
-                self.agents[agent]['location_vector'][el['location']] += 1
+                self.agents[agent]['location_vector'][traj_entry['location']] += 1
 
                 #current location       
-                self.agents[agent]['current_location'] = el['location']
+                self.agents[agent]['current_location'] = traj_entry['location']
                 
                 if self.map_ids:
                     agent = self.gid_2_uid(agent)
                 
                 if self.abstract_space:
-                    self.trajectories.append((agent, el['location'], el['location'], el['timestamp']))
+                    self.trajectories.append((agent, traj_entry['location'], traj_entry['location'],
+                                              traj_entry['timestamp'], self.agents[agent]['S']))
                 else:
-                    lat = self.lats_lngs[el['location']][0]
-                    lng = self.lats_lngs[el['location']][1]
-                    self.trajectories.append((agent, lat, lng, el['timestamp']))
+                    lat = self.lats_lngs[traj_entry['location']][0]
+                    lng = self.lats_lngs[traj_entry['location']][1]
+                    self.trajectories.append((agent, lat, lng, traj_entry['timestamp'], self.agents[agent]['S']))
 
                 toRemove.append(i)
             i+=1      
@@ -716,7 +721,7 @@ class GeoSim():
             return self.agents[agent]['mobility_diary'].loc[row]['abstract_location']
     
     
-    def confirm_action(self, agent, location_id, mode='standard', correction_action=''):
+    def confirm_action(self, agent, location_id, mode='standard', correction_action='', S=''):
         
         if mode == 'standard':
             if self.mobility_diary:           
@@ -808,7 +813,8 @@ class GeoSim():
     def generate(self, start_date, end_date, social_graph='random', spatial_tessellation=None, n_agents=200, 
                  n_locations=50, rsl=False, distance_matrix=None, relevance_column=None, distance = False,
                  gravity = False, random_state=None, log_file=None, show_progress=False,dt_update_mobSim = 24*7, 
-                 indipendency_window = 0.5, min_relevance = 0.1, max_speed_km_h=None, degree_exp_social=False, diary_generator=None): 
+                 indipendency_window = 0.5, min_relevance = 0.1, max_speed_km_h=None, degree_exp_social=False,
+                 diary_generator=None): 
         
         
         
@@ -934,8 +940,7 @@ class GeoSim():
                               
             #3 mob. similarity
             self.compute_mobility_similarity()
-
-             
+           
         #4. init the progress bar with hours precision
         if show_progress:
             last_t = self.start_date
@@ -960,7 +965,7 @@ class GeoSim():
                 location_id = None
                 
                 
-                ### TODO: what is this for???
+                ### TODO: what is this for?
                 #if the user is spending its visiting time do nothing 
                 if self.current_date != self.agents[agent]['time_next_move']:
                     if self.agents[agent]['time_next_move'] < min_time_next_move:
@@ -1009,8 +1014,7 @@ class GeoSim():
                                         
                 else:
                     choice = p_action
-                    
-
+                
                 #EXPLORATION_SOCIAL choice
                 if choice == 'ExpSocial':
                     #Select a UNVISITED location based on social contacts                   
@@ -1030,7 +1034,8 @@ class GeoSim():
                 elif choice == 'RetSolo':
                     #Select a VISITED location
                     location_id = self.make_preferential_choice(agent)
-                        
+                 
+                 
                 #location selected correctly (location_id >= 0)            
                 if location_id >= 0:             
                     if self.mobility_diary:
@@ -1060,7 +1065,8 @@ class GeoSim():
                     if choice == 'ExpSolo' or 'ExpSocial':                        
 
                         if self.agents[agent]['force_move']['tries'] < self.max_tries:
-                                self.confirm_action(agent, location_id, mode='correct', correction_action='ExpSolo')            
+                                self.confirm_action(agent, location_id, mode='correct',
+                                                    correction_action='ExpSolo')            
                         else:                    
                             location_id = self.make_preferential_choice(agent)
 
@@ -1068,6 +1074,7 @@ class GeoSim():
                         location_id = self.make_preferential_choice(agent)
 
                 if location_id >= 0:
+
                     self.confirm_action(agent, location_id)
   
                 if self.agents[agent]['time_next_move']< min_time_next_move:
@@ -1083,6 +1090,7 @@ class GeoSim():
             
             self.current_date = min_time_next_move
             
+            # show elapse time, iterations per second, percentage of tasks completed            
             if show_progress:                
                 dT2 = self.current_date - last_t   
                 if(dT2.components[0]!=0 or dT2.components[1]!=0):
@@ -1101,7 +1109,8 @@ class GeoSim():
         # tdf = tdf.sort_by_uid_and_datetime()
         
         # convert list of tuples into pandas df
-        traj_df = pd.DataFrame(self.trajectories, columns=['user_id', 'latitude', 'longtitude', 'datetime'])
+        traj_df = pd.DataFrame(self.trajectories, columns=['user_id', 'latitude', 'longtitude',
+                                                           'datetime', 'num_uniq_loc_visited'])
         traj_df_sort = traj_df.sort_values(['user_id', 'datetime'])
         
         # round off to seconds; done when generating waiting time samples within the function: get_waiting_time
