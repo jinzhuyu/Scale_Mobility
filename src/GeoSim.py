@@ -36,7 +36,12 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
 # TODO: Find the joint distribution between travel time and waiting time
         # then sample travel time and waiting time simultaneously
 
+# !!!: measure the variation of sequence of locations in a week. Autocovariance of random walks.
 # TODO: the stationary distribution
+# TODO: 1. plot sample path. 2. plot lag-n correlation
+    # 2. compare to real data
+    
+    # multiagent: cross-correlation
 
 ''' example of usage
 
@@ -58,14 +63,14 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
 
 
     # shared parameter values
-    n_agents = 200
+    n_agents = 50
     n_locations = 1000
     random_state = 11235
 
     #setting the period of the simulation
     
     start = pd.to_datetime('2020/01/10 00:00:00')
-    end = pd.to_datetime('2020/04/11 00:00:00')
+    end = pd.to_datetime('2021/01/10 00:00:00')
 
     #instantiate a GeoSim object using the default parameters for the empirical distributions   
     geosim_wo_travel_sleep = GeoSim()  # gs.GeoSim()
@@ -75,17 +80,17 @@ import powerlaw  # https://github.com/jeffalstott/powerlaw
         #Use the Relevance-based starting location (RSL)
         #note that n_agents can be omitted since it is computed from the social graph as the number of nodes
         
-    synthetic_traj_wo_travel_sleep = geosim_wo_travel_sleep.generate(start_date=start, end_date=end, spatial_tessellation=None, n_agents=n_agents,
-                                             n_locations=n_locations, rsl=False, relevance_column='relevance', social_graph='random',
-                                             distance=False, gravity=False, show_progress = True, random_state=random_state)
+    syn_traj_wo_travel_sleep = geosim_wo_travel_sleep.generate(start_date=start, end_date=end, spatial_tessellation=None, n_agents=n_agents,
+                                    n_locations=n_locations, rsl=False, relevance_column='relevance', social_graph='random',
+                                    distance=False, gravity=False, show_progress = True, random_state=random_state)
 
     
     synthetic_traj.to_csv('synthetic_trajectories.csv', index=False)
     # with travel time and sleep time
     geosim_wt_travel_sleep = GeoSim(is_add_travel_time=True, is_add_sleep_time=True)
-    synthetic_traj_wt_travel_sleep = geosim_wt_travel_sleep.generate(start_date=start, end_date=end, spatial_tessellation=None,
-                                             n_agents=n_agents, n_locations=n_locations, rsl=False, relevance_column='relevance',
-                                             social_graph='random', distance=False, gravity=False, show_progress = True, random_state=random_state)
+    syn_traj_wt_travel_sleep = geosim_wt_travel_sleep.generate(start_date=start, end_date=end, spatial_tessellation=None,
+                                    n_agents=n_agents, n_locations=n_locations, rsl=False, relevance_column='relevance',
+                                    social_graph='random', distance=False, gravity=False, show_progress = True, random_state=random_state)
     
     synthetic_trajectories_with_travel_time.to_csv('synthetic_trajectories_with_travel_time.csv', index=False)
     # synthetic_trajectories.head()
