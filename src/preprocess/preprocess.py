@@ -230,6 +230,5 @@ os.chdir(path_src)
 
 if __name__ == '__main__':
     main()
-else:
-    print('The main() function did not execute')
+
     

@@ -329,7 +329,9 @@ def process_traj_indiv(df, days_need_min=30, is_save=False):
     n_indiv_temp = 500     
     stoppint_dfs_list = list(map(loop_over_indiv,
                                  id_uniq[:n_indiv_temp],
-                                 list( range(len(id_uniq[:n_indiv_temp])) )))
+                                 list( range(len(id_uniq[:n_indiv_temp])) )
+                                 )
+                             )
  
     for i in range(n_indiv_temp):
         stoppint_dfs_list[i].show()

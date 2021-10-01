@@ -15,23 +15,7 @@ import pickle
 from collections import defaultdict
 
 
-def infer_stop_points(pathraw,path_output):
-    '''
-    infer the stop point of each individual
-
-    Parameters
-    ----------
-    pathraw : TYPE
-        File name contains the ID of each individual.
-    path_output : TYPE
-        DESCRIPTION.
-
-    Returns
-    -------
-    None.
-
-    '''
-    
+def infer_stop_points(pathraw,path_output):   
     
     files = os.listdir(pathraw)
     
@@ -40,21 +24,6 @@ def infer_stop_points(pathraw,path_output):
     from functools import reduce
     
     def concat_ind_stoppoint(file_name1, file_name2):
-        '''
-        read in the trajectory data for indiv1 and indiv2
-
-        Parameters
-        ----------
-        file_name1 : TYPE
-            DESCRIPTION.
-        file_name2 : TYPE
-            DESCRIPTION.
-
-        Returns
-        -------
-        None.
-
-        '''
         
         #load raw data
         os.chdir(path_data)
@@ -67,19 +36,6 @@ def infer_stop_points(pathraw,path_output):
         # 
  
     def infer_indiv_stoppoint(file_name):
-        '''
-        
-
-        Parameters
-        ----------
-        file_name : TYPE
-            DESCRIPTION.
-
-        Returns
-        -------
-        None.
-
-        '''
         df = pd.read_csv(pathraw+file_name)
         traj_data_array =  np.array(df.select('latitude','longitude','time').collect())
         individual = df_temp.loc[0, 'id_str']
@@ -157,7 +113,7 @@ def infer_stop_points(pathraw,path_output):
                 df_ouput.to_csv(path_output+individual+'.csv',index = False)
                 # stop point for individual, time and cooridinates at stop points
 
-os.chdir("./preprocess")
+# os.chdir("./preprocess")
 def main():
     output_str = 'Jan'
     path_individual= output_str+'_individual/individual_raw/'
@@ -167,5 +123,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-else:
-    print("The main() function in 'stopoint' did not execute")
