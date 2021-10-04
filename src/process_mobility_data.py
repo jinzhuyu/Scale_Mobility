@@ -15,14 +15,16 @@ os.chdir('/mnt/c/code/Scale_Mobility/src/')
 # import pickle
 # import glob
 
-import infostop
+import models
+
+# import infostop
 # from datetime import datetime
 from time import time
 from joblib import Parallel, delayed
 from geopy.geocoders import Nominatim    #https://geopy.readthedocs.io/en/stable/#nominatim
 
 
-class MobilityData:
+# class MobilityData:
     '''  
     Our objective:
         combine data in a day
@@ -83,22 +85,41 @@ class MobilityData:
             find home location of each individual
         '''
         coord_arr = np.array(group[['latitude','longitude']].values)
-        # get labels of locations of single individual
-        model_infostop = infostop.SpatialInfomap(r2=min_dist_betwn_point,
-                                                 label_singleton=True,
-                                                 min_spacial_resolution=0.0001,
-                                                 distance_metric='haversine',            
-                                                 verbose=False) ###only true for testing
+        # # get labels of locations of single individual
+        # model_infostop = infostop.SpatialInfomap(r2=min_dist_betwn_point,
+        #                                          label_singleton=True,
+        #                                          min_spacial_resolution=0.0001,
+        #                                          distance_metric='haversine',            
+        #                                          verbose=False) ###only true for testing
+        # label_list = model_infostop.fit_predict(coord_arr)
+        # TODO: relabel all users instead of by group 
+            #If the input type is a list of arrays, each array is assumed
+            #to be the trace of a single user, in which case the obtained stop locations are shared by all users in
+            #the population.
+        # coord_nest_list = df.groupby('id_str')[['latitude','longitude']].apply(pd.Series.tolist).tolist()[:2]
+        # coord_arr = [np.asarray(item) for item in coord_nest_list][:2]
+        # coord_arr
+        
+        # min_dist_betwn_point = 30
+        model_infostop = SpatialInfomap(r2=min_dist_betwn_point,
+                                        label_singleton=True,
+                                        min_spacial_resolution=0.0001,
+                                        distance_metric='haversine',            
+                                        verbose=False) ###only true for testing
         label_list = model_infostop.fit_predict(coord_arr)        
+
         return label_list         
 
-# TODO: label whether or not a location is home
-
-    
+        # TODO: label whether or not a location is home
+        # coord_arr = []
+        # coord_arr.append(np.ones([2, 2]))
+        # coord_arr.append(np.ones([3, 2]))
+        
     def relabel_all_group(df, min_dist_betwn_point=30):
         # change to float
         df[['start','end', 'latitude', 'longitude']] = df[['start', 'end', 'latitude', 'longitude']].astype(float)         
         # relabel stop points
+        # df_group = df.groupby('id_str')
         label_list = df.groupby('id_str').apply(relabel_by_group)
         df['label'] = label_list
         return df
@@ -188,10 +209,10 @@ class MobilityData:
             t1 = time()
             print('\n===== Time for relabeling:{}'.format(t1-t0))
 
-# TODO: labels are all NaNs;
-# TODO: groupby is too inefficient. Use transform that takes a series as input
-# https://towardsdatascience.com/how-to-make-your-pandas-loop-71-803-times-faster-805030df4f06 
-# TODO: check if the code can be converted to cyhton code                                
+        # TODO: labels are all NaNs;
+        # TODO: groupby is inefficient. Use transform that takes a series as input
+        # https://towardsdatascience.com/how-to-make-your-pandas-loop-71-803-times-faster-805030df4f06 
+        # TODO: check if the code can be converted to cyhton code                                
             
             # get other movement feature: travel time and dist, stay time, travel angle.
             t0 = time()
