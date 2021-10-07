@@ -1,26 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Sep 27 10:48:13 2021
+Created on Wed Oct  6 17:32:48 2021
 
 @author: Jin-Zhu Yu
 """
 
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Sep 27 10:48:13 2021
+
+@author: Jin-Zhu Yu
+"""
 import numpy as np
 import pandas as pd
 import os
-os.chdir('/mnt/c/code/Scale_Mobility/src/')
-# from my_utils import *
-# import pickle
-# import glob
-
-# import models    # in case where infostop cannot be installed
-
-import infostop
-# from datetime import datetime
+os.chdir('c:/code/Scale_Mobility/src/')
+from glob import glob
 from time import time
-from joblib import Parallel, delayed
-# from geopy.geocoders import Nominatim    #https://geopy.readthedocs.io/en/stable/#nominatim
-
+from h3 import geo_to_h3
 
 # # class MobilityData:
 #     '''  
@@ -36,42 +33,36 @@ from joblib import Parallel, delayed
 #         'id_str', 'label', 'start', 'end', 'lat_start', 'lon_start', 'lat_end', 'lon_end'
 #         Note that the location id for different dates are independent. That's why we also need to relabel the locations.      
 #     '''
-# def __init__(dir_raw_data, dir_processed_data,
-#          night_start=18, night_end=8,
-#          min_dist_betwn_point=30,
-#          is_save=False):
+# def __init__(dir_raw_data, dir_processed_data, resol=12, is_save=False):
 # dir_raw_data = dir_raw_data
 # dir_processed_data = dir_processed_data
-# # r2 = r2    # min distances between two different stop points
-# night_start = night_start
-# night_end = night_end
-# min_dist_betwn_point = min_dist_betwn_point
+# resol = resol  # resolution of GeoToH3 that determines the size of a hexegon/location
 # is_save = is_save
-
-night_start, night_end = 18, 8
-
-def merge_consec_stopoint(df_temp):
+    
+def merge_consec_stopoint(df):
     '''
     Merge consecutive stop points that are actually the same point.
         For example, consecutive entries 13 to 16 all have location label 2, thse entries should be merged into one entry.
         The start time (use min) and end time (use max) as well as start coords (use mean) and end coords (use mean) are updated as well
-
     Params
     ----------
-    df_temp: a df that includes the trajectories of one csv file (about 2000 individuals) (or use all?) in a single day
+    df: a df that includes the trajectories of all csv files (several million individuals for about 6 months)
     '''
     # assign the same group id if the values of id str and label are the same
-    df_is_value_same = (df_temp[['id_str','label']] != df_temp.shift().fillna(method='bfill')[['id_str', 'label']])
-    # increase group id number only if both values are true
-    temp_group =(df_is_value_same.sum(axis=1)>0).cumsum().rename('temp_group')
+    df_is_value_same = (df[['id_str','label']] == df.shift().fillna(method='bfill')[['id_str', 'label']])
+    # use the same group id number only if both values are true
+    temp_group = (df_is_value_same.sum(axis=1)<2).cumsum().rename('temp_group')
     # group by id stri, label and id of temp group
-    df_temp_merged = df_temp.groupby(['id_str','label',temp_group]).agg({'start': ['min'],'end': ['max'],'latitude': ['mean'],'longitude': ['mean']})
+    df_merged = df.groupby(['id_str','label',temp_group], sort=False).agg({'start': ['min'],
+                                                                           'end': ['max'],
+                                                                           'latitude': ['mean'],
+                                                                           'longitude': ['mean']})
     # rename and select 
-    df_temp_merged.columns = ['start', 'end', 'latitude','longitude']
-    df_temp_merged = df_temp_merged.reset_index()      
-    return df_temp_merged      
+    df_merged.columns = ['start', 'end', 'latitude','longitude']
+    df_merged = df_merged.reset_index()      
+    return df_merged      
 
-
+    
 def remove_single_record_user(df, n_min_record=2):
     '''
     Select users that have at least two different stop points per day.
@@ -82,175 +73,132 @@ def remove_single_record_user(df, n_min_record=2):
 
 
 # relabel stop points of a single user
-def relabel_by_group(group):
+def relabel_loc(df):
     ''' relabel the stop points of each individual's df
         find home location of each individual
     '''
-    coord_arr = np.array(group[['latitude','longitude']].values)
-    print(coord_arr)
-
-    # # get labels of locations of single individual
-    # model_infostop = infostop.SpatialInfomap(r2=min_dist_betwn_point,
-    #                                          label_singleton=True,
-    #                                          min_spacial_resolution=0.0001,
-    #                                          distance_metric='haversine',            
-    #                                          verbose=False) ###only true for testing
-    # label_list = model_infostop.fit_predict(coord_arr)
-    # TODO: relabel all users instead of by group 
-        #If the input type is a list of arrays, each array is assumed
-        #to be the trace of a single user, in which case the obtained stop locations are shared by all users in
-        #the population.
-    # coord_nest_list = df.groupby('id_str')[['latitude','longitude']].apply(pd.Series.tolist).tolist()[:2]
-    # coord_arr = [np.asarray(item) for item in coord_nest_list][:2]
-    # coord_arr
-
-    min_dist_betwn_point = 30
-    model_infostop = infostop.SpatialInfomap(r2=min_dist_betwn_point,
-                                            label_singleton=True,
-                                            min_spacial_resolution=0.0001,
-                                            distance_metric='haversine',            
-                                            verbose=False) ###only true for testing
-    label_list = model_infostop.fit_predict(coord_arr)        
-
-    return label_list         
-
-
-# TODO: label whether or not a location is home
-
-def relabel_all_group(df, min_dist_betwn_point=30):
-    # change to float
-    df[['start','end', 'latitude', 'longitude']] = df[['start', 'end', 'latitude', 'longitude']].astype(float)         
-    # relabel stop points
-    # df_group = df.groupby('id_str')
-    label_list = df.groupby('id_str').apply(relabel_by_group)
+    # to_numpy for pandas > 0.24.0
+    # lats = df['latitude'].to_numpy(dtype=np.float64)
+    # lngs = df['longitude'].to_numpy(dtype=np.float64)
+    lats = df['latitude'].values
+    lngs = df['longitude'].values
+    resolution = 12  # in [0,15]; finest resolution is 15
+    label_list = [geo_to_h3(x[0], x[1], resolution) for x in zip(lats, lngs) ]
     df['label'] = label_list
-    return df
+    return df         
 
 
-def find_home_loc(df_temp):    
-    df_temp_night = df_temp[(pd.to_datetime(df_temp['start'], unit='s').dt.hour>=night_start)&\
-                            (pd.to_datetime(df_temp['end'], unit='s').dt.hour<=night_end)]
-    if len(df_temp_night)==0:
-        lat, lon = None, None
-        # lat, lon, county, state = None, None, None, None
-    else:
-        (lat, lon) = df_temp_night.groupby(['latitude', 'longitude']).size().idxmax()
-        # geolocator = Nominatim(user_agent="geoapiExercises")
-        # location = geolocator.reverse(str(lat) + "," + str(lon))
-        # address = location.raw['address']
-        # county= address.get('county', '')           
-        # state = address.get('state', '')
-      # city = address.get('city', '')
-      # zipcode = address.get('postcode') 
-    return lat, lon  #, county, state
+def haversine(lat1, lon1, lat2, lon2):
+    """
+    Calculate the earth distance and bearing in degree between two points 
+    on the earth (specified in decimal degrees)
+    """
+    #check input type
+    if (not isinstance(lon1, list)) and (not isinstance(lon1, pd.Series)):
+        raise TypeError("Only list or pandas series are supported as input coordinates")
+    #Convert decimal degrees to Radians:
+    lon1, lat1 = np.radians(lon1), np.radians(lat1)
+    lon2, lat2 = np.radians(lon2), np.radians(lat2)
+    #Implementing Haversine Formula: 
+    dlon, dlat = np.subtract(lon2, lon1), np.subtract(lat2, lat1)
+
+    a = np.add(np.power(np.sin(np.divide(dlat, 2)), 2),  
+               np.multiply(np.cos(lat1), 
+                           np.multiply(np.cos(lat2), 
+                                       np.power(np.sin(np.divide(dlon, 2)), 2))))
+    c = np.multiply(2, np.arcsin(np.sqrt(a)))
+    r = 6371*1e3  # global average radius of earth in m. Use 3956 for miles.
+    dist = c*r
+    
+    bearing = np.arctan2(np.cos(lat1)*np.sin(lat2)-np.sin(lat1)*np.cos(lat2)*np.cos(dlon),
+                         np.sin(dlon)*np.cos(lat2)) 
+    bearing = np.degrees(bearing)
+    bearing_deg = (bearing + 360) % 360
+    return np.round(dist, 4), np.round(bearing_deg, 4)
 
 
-def find_home_by_group(group):
-    # home_lat,home_lon,county,state = find_home_loc(group)
-    home_lat,home_lon = find_home_loc(group)
-    user_id = group['id_str'].iloc[0]
-    return [user_id, home_lat, home_lon]  #, county, state]
-
-
-def find_home_all_group(df):
-    # get each user's home location
-    user_home_list = df.groupby('id_str').apply(find_home_by_group)
-    df_user_home = pd.DataFrame(user_home_list, columns=['id_str','home_lat','home_lon'])  #,'county','stte'])    
-    return df_user_home
-
-
-def get_movement_feature(df_temp):
+def get_other_feature(df):
     '''Get travel time, stay time, travel distance, travel bearing
     '''
-    n_row = len(df_temp)
-    df_temp['stay_time'] = df_temp['end'] - df_temp['start']    
-    # travel time
-    df_temp_shift = df_temp.shift().fillna(method='bfill')
-    df_temp['travel_time'] = df_temp['start'] - df_temp_shift['end']
-    df_temp.loc[n_row, 'travel_time'] = np.nan   # no travel time for the last row
-    # # dist and angle
-    # df_temp['travel_dist'], df_temp['travel_angle'] = haversine(df_temp['latitude'], df_temp['longitude'],
-    #                                                             df_temp_shift['latitude'], df_temp_shift['longitude'])
-    # df_temp.loc[n_row, 'travel_dist'] = np.nan   # no travel dist for the last row
-    # df_temp.loc[n_row, 'travel_angle'] = np.nan   # no travel angle for the last row     
-    return df_temp
+    # stay time
+    df['stay_time'] = df['end'] - df['start'] 
+    # travel time 
+    df_shift = df.shift().fillna(method='bfill')    
+    df['travel_time'] = df['start'] - df_shift['end']
+    # dist and angle
+    df['travel_dist'], df['travel_angle'] = haversine(df['latitude'], df['longitude'],
+                                                      df_shift['latitude'], df_shift['longitude'])
+    # set to nan when the consercutive rows are not of the same user  
+    # and first row
+    df = df.reset_index(drop=True)
+    df.loc[0, ['travel_time', 'travel_dist', 'travel_angle']] = np.nan
+    
+    df_shift = df.shift().fillna(method='bfill')
+    df_is_user_same = (df['id_str'] == df_shift['id_str'])
+    cols = ['travel_time', 'travel_dist', 'travel_angle']
+    df[cols] = df[cols].mask(df_is_user_same==False, np.nan)
+    return df
+   
 
-# def process_all_date():
 def loop_over_date(this_date):
-    t0 = time()
-    file_list= list(os.listdir(dir_raw_data+this_date))
-    # load data file one at a time and merge consecutive identical stop points
-    # TODO: another option is loading all csv files into one giant csv and 
-    def loop_over_file(fname):
-        df_temp = pd.read_csv(dir_raw_data+this_date+'/'+fname)
-        # drop the useless column
-        if 'Unnamed: 0' in df_temp.columns:
-            df_temp = df_temp.drop(['Unnamed: 0'], axis=1)
-        # get the center of stop points
-        df_temp['latitude'] = (df_temp['lat_start']+df_temp['lat_end'])/2
-        df_temp['longitude'] = (df_temp['lon_start']+df_temp['lon_end'])/2    
-        df_temp_merged = merge_consec_stopoint(df_temp)
-        return df_temp_merged
-    df_list = Parallel(n_jobs=4,verbose=0)(delayed(loop_over_file)(fname) for fname in file_list)
-    df = pd.concat(df_list, ignore_index=True)
-    df = df[['id_str', 'label', 'start', 'end','latitude', 'longitude']]
     t1 = time()
-    print('===== Time for merging:{}'.format(t1-t0))
+    csv_list = glob(dir_raw_data + this_date + '/*.csv')   
+    df = pd.concat([pd.read_csv(file) for file in csv_list], ignore_index=True)
+    t2 = time()
+
+    # drop the useless column
+    if 'Unnamed: 0' in df.columns:
+        df = df.drop(['Unnamed: 0'], axis=1)
+    # get the center of stop points
+    df['latitude'] = (df['lat_start']+df['lat_end'])/2
+    df['longitude'] = (df['lon_start']+df['lon_end'])/2
+    
+    df_merge = merge_consec_stopoint(df)
+    df_merge = df_merge[['id_str', 'label', 'start', 'end','latitude', 'longitude']]    
 
     # remove users with just one record
-    t0 = time()
+    t3 = time()
     df = remove_single_record_user(df)
-    t1 = time()
-    print('===== Time for removing users with a single record:{}'.format(t1-t0))            
-
-    # find user home location
-    # TODO: label home location in the mobility data
-    t0 = time()
-    df_user_home = find_home_all_group(df)
-    t1 = time()
-    print('===== Time for finding home location:{}'.format(t1-t0))     
-
-    # # relabel
-    # t0 = time()
-    # df = relabel_all_group(df)
-    # t1 = time()
-    # print('===== Time for relabeling:{}'.format(t1-t0))
-
-    # TODO: labels are all NaNs;
-    # TODO: groupby is inefficient. Use transform that takes a series as input
-    # https://towardsdatascience.com/how-to-make-your-pandas-loop-71-803-times-faster-805030df4f06 
-    # TODO: check if the code can be converted to cython code                                
-        
-    # get other movement feature: travel time and dist, stay time, travel angle.
-    t0 = time()
-    df = get_movement_feature(df)
-    t1 = time()
-    print('===== Time for extracting other movement features:{}'.format(t1-t0))             
-
+    t4 = time() 
+    
+    # get other mobility feature: travel time and dist, stay time, travel angle.
+    df = get_other_feature(df) 
+    
+    # relabel
+    t5 = time() 
+    df = relabel_loc(df)
+    t6 = time() 
     # save the processed data
-    t0 = time()
+    is_save = True
     if is_save:
         # saving and loading pickle files are significantly faster than csv files
         df.to_pickle(dir_processed_data +'{}.pkl'.format(this_date))
-        df_user_home.to_pickle(dir_processed_data+'user_home_location.pkl')
-        del df, df_user_home
-    t1 = time()
-    print('===== Time for saving:{}'.format(t1-t0))
+        df.to_csv(dir_processed_data +'{}.csv'.format(this_date))
+        # del df
+    t7 = time()
 
-is_save = False
+    if verbose:    
+        print('\n===== Time for importing all csv files:  {} seconds'.format(round(t2-t1, 1)) )
+        print('===== Time for merging:  {} seconds'.format(round(t3-t2, 1)) )    
+        print('===== Time for removing single-record users:  {} seconds'.format(round(t4-t3, 1)) )     
+        print('===== Time for relabeling:  {} seconds'.format(round(t6-t5, 1)) )
+        print('===== Time for getting other features:  {} seconds'.format(round(t5-t4, 1)) )  
+        print('===== Time for saving as csv and pkl:  {} seconds'.format(round(t7-t6, 1)) )
+        print('===== Total time:  {} seconds'.format(round(t7-t1,1)) )  
+    
+
+is_save = True
+verbose = True
 dir_raw_data = '../data/mobility_data_6_month/'
 dir_processed_data = '../data_processed/stop_points/'
-folder_list = list(os.listdir(dir_raw_data))[:1]    #[-3:]
-# this_date = folder_list[1]
-# print(folder_list)
-[loop_over_date(folder) for folder in folder_list]   # returns list of 'None'. A bit faster than 'for loop' and 'any'
-
+date_list = list(os.listdir(dir_raw_data))[:15]    #  [:2]   # [-3:]
+[loop_over_date(date) for date in date_list]     # returns list of 'None'. A bit faster than 'for loop' and 'any'
 
 # #####
 # def main():
 #     dir_raw_data = '../data/mobility_data_6_month/'
 #     dir_processed_data = '../data_processed/stop_points/'
-      # is_save = False
+#     is_save = True
     
 #     mobility_data = MobilityData(dir_raw_data, dir_processed_data, is_save=is_save)
 #     t0 = time()
@@ -260,7 +208,7 @@ folder_list = list(os.listdir(dir_raw_data))[:1]    #[-3:]
 #     print('\n===== Completed all. Time elapsed: {}'.format(t_total))
     
 
-######################
+# #####################
 # if __name__ == 'main':
 # main()
     
