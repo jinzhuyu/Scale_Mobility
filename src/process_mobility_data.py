@@ -7,7 +7,7 @@ Created on Mon Sep 27 10:48:13 2021
 import numpy as np
 import pandas as pd
 import os
-os.chdir('c:/code/Scale_Mobility/src/')
+# os.chdir('c:/code/Scale_Mobility/src/')
 from glob import glob
 from time import time
 from h3 import geo_to_h3
