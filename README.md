@@ -1,1 +1,1 @@
-# Scale_Mobility
+Code for (i) extracting stop points of millions of individuals from their GPS trajectories for about 6 months and (ii) implementing a new individual mobility model to uncover novel collective mobility dynamics or characteristics.
