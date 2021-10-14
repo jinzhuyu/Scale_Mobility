@@ -12,10 +12,18 @@ if os.path.exists(fnm):
 df=pd.read_csv('/gpfs/u/home/COVP/COVPlzng/codes/preprocess/dates.csv')
 date_list=[str(int(i)) for i in df['datestr'].values if np.isnan(i)==False]
 
+<<<<<<< Updated upstream
 ##### read the id list with [id_str, #record, date]
 df=pd.read_csv('/gpfs/u/scratch/COVP/shared/mapping_dict_sum/group_record_date.csv')
 id_list =[i for i in df['id_str'].values]
 
+=======
+##### read the id list with [id_str, #record, date] ####STASTITICS SUMMARY,  descending order according #records
+df=pd.read_csv('/gpfs/u/scratch/COVP/shared/mapping_dict_sum/group_record_date.csv')
+id_list =[i for i in df['id_str'].values]
+
+
+>>>>>>> Stashed changes
 #splite the list of ids;
 num_id=10 ###number of ids needs to be process
 id_splited=np.array_split(id_list, int(len(id_list)/num_id))

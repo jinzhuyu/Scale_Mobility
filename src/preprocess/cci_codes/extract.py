@@ -12,7 +12,13 @@ import time
 
 def extract(path, path_data,dict_df_temp):
     '''
+<<<<<<< Updated upstream
     given the path for id (path); the path for raw data (path data); and the dirctonary (dict_df_temp)
+=======
+    path: the path for each id;
+    path_data: the path for raw data;
+    dict_df_temp: the dirctonary file;
+>>>>>>> Stashed changes
     then we could get each id's slice (among 2000 slices) and rows for record
     then we could extract files and write it as "path+'/'+date+'.csv'"
     '''
@@ -27,7 +33,11 @@ def extract(path, path_data,dict_df_temp):
         files.sort()
         file=files[i]
         print(date,i,file)
+<<<<<<< Updated upstream
         df_file = process_utils.load_data_main(path_data, date, file)
+=======
+        df_file = process_utils.load_data_main(path_data, date, file)###US raw data path; date path; slice file path;
+>>>>>>> Stashed changes
         traj_all=pd.concat([traj_all,df_file.loc[record]])
     traj_all.sort_values(by='time').reset_index(drop=True)
     traj_all.to_csv(path+'/'+date+'.csv')
@@ -62,7 +72,11 @@ if __name__ == "__main__":
             os.makedirs(path_individual +"/"+ id_num)
             print(path_individual +"/"+ id_num, 'folder created')
     
+<<<<<<< Updated upstream
     ######open the dictonary file at the specific date
+=======
+    ######open the dictonary file (specific date) at the specific date ##id_str, slice, record (list of row number);
+>>>>>>> Stashed changes
     dict_df=pd.read_csv('/gpfs/u/scratch/COVP/shared/mapping_dict_sum/'+date+'.csv')
     
     ######begina parallel proprecssing on extracting the data
