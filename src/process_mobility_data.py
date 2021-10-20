@@ -7,10 +7,13 @@ Created on Mon Sep 27 10:48:13 2021
 import numpy as np
 import pandas as pd
 import os
-# os.chdir('c:/code/Scale_Mobility/src/')
+os.chdir('c:/code/Scale_Mobility/src/')
 from glob import glob
 from time import time
 from h3 import geo_to_h3
+
+
+
 
 class MobilityData:
     '''  
@@ -27,11 +30,11 @@ class MobilityData:
         Note that the location id for different dates are independent. That's why we also need to relabel the locations.      
     '''
     def __init__(self, dir_raw_data, dir_processed_data, dir_user_record,
-                 resol=12, n_min_record_daily=2, is_save=False, verbose=False):
+                 resol=10, n_min_record_daily=2, is_save=False, verbose=False):
         self.dir_raw_data = dir_raw_data
         self.dir_processed_data = dir_processed_data
         self.dir_user_record = dir_user_record
-        self.resol = resol  # resolution of GeoToH3 that determines the size of a hexegon/location
+        self.resol = resol  # # https://h3geo.org/docs/core-library/restable/. edge length=150m, area=6591m^2
         self.n_min_record_daily = n_min_record_daily
         self.is_save = is_save
         self.verbose = verbose
@@ -96,8 +99,7 @@ class MobilityData:
         # lngs = df['longitude'].to_numpy(dtype=np.float64)
         lats = df['latitude'].values
         lons = df['longitude'].values
-        resolution = 12  # in [0,15]; finest resolution is 15
-        label_list = [geo_to_h3(x[0], x[1], resolution) for x in zip(lats, lons) ]
+        label_list = [geo_to_h3(x[0], x[1], self.resol) for x in zip(lats, lons) ]
         df['label'] = label_list
         return df         
     
@@ -209,13 +211,13 @@ class MobilityData:
 #####
 def main():
     
-    dir_raw_data = '../data/mobility_data_6_month/'
-    dir_processed_data = '../data_processed/stop_points/'
+    dir_raw_data = 'D:/mobility_data_6_month/'
+    dir_processed_data = 'D:/stop_points/'
     dir_user_record = '../data/user_record.pkl'
     is_save = True
     
     mobility_data = MobilityData(dir_raw_data, dir_processed_data, dir_user_record,
-                                 resol=12, n_min_record_daily=2, is_save=is_save, verbose=False)
+                                 resol=10, n_min_record_daily=2, is_save=is_save, verbose=False)
     t0 = time()
     mobility_data.process_all_date()
     t1 = time()
