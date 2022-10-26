@@ -104,7 +104,6 @@ def append_dfs(df1, df2):
 
 
 
-#TODO: move to utils later
 def haversine(lat1, lon1, lat2, lon2):
     """
     Calculate the earth distance and bearing in degree between two points 
